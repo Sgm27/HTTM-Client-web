@@ -9,6 +9,7 @@ import StoryDetail from "./pages/StoryDetail";
 import Upload from "./pages/Upload";
 import Account from "./pages/Account";
 import NotFound from "./pages/NotFound";
+import Bookmarks from "./pages/Bookmarks";
 
 const queryClient = new QueryClient();
 
@@ -24,6 +25,7 @@ const App = () => (
           <Route path="/story/:id" element={<StoryDetail />} />
           <Route path="/upload" element={<Upload />} />
           <Route path="/account" element={<Account />} />
+          <Route path="/bookmarks" element={<Bookmarks />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

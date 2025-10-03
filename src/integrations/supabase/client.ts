@@ -4,6 +4,7 @@ import type { Database } from './types.ts';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID;
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
@@ -19,7 +20,7 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
 // Dev-time check: verify project ref in URL matches expected
 (() => {
   try {
-    const expectedRef = 'opdchkkmyjaccbkkdycl';
+    const expectedRef = SUPABASE_PROJECT_ID || new URL(SUPABASE_URL).host.split('.')[0];
     const host = new URL(SUPABASE_URL).host; // e.g. opdchkkmyjaccbkkdycl.supabase.co
     if (!host.startsWith(expectedRef + '.')) {
       console.warn('[Supabase] Project ref mismatch. URL host =', host, 'expected to start with', expectedRef + '.');

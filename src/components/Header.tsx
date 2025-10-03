@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { BookOpen, Upload, User, LogOut } from "lucide-react";
+import { BookOpen, Upload, User, LogOut, Bookmark } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
@@ -72,6 +72,10 @@ const Header = () => {
                   <DropdownMenuItem onClick={() => navigate("/account")}>
                     <User className="mr-2 h-4 w-4" />
                     Tài khoản
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/bookmarks")}>
+                    <Bookmark className="mr-2 h-4 w-4" />
+                    Đánh dấu
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate("/upload")} className="sm:hidden">
                     <Upload className="mr-2 h-4 w-4" />

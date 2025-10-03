@@ -1,5 +1,15 @@
 project_id = "opdchkkmyjaccbkkdycl"
 
+# Site URL for auth links and provider redirects
+site_url = "https://httm.sonktx.online"
+
+# Allow these additional redirect URLs (comma-separated)
+additional_redirect_urls = [
+  "https://httm.sonktx.online",
+  "http://localhost:5173",
+  "http://localhost:8080"
+]
+
 [auth.email.template.confirmation]
 subject = "Xác nhận đăng ký tài khoản"
 content_path = "./supabase/templates/confirmation.html"

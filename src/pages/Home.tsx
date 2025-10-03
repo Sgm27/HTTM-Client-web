@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { BookOpen, Clock, Eye, Heart, Newspaper, Volume2 } from "lucide-react";
+import { BookOpen, Clock, Eye, Heart, Newspaper, Volume2, Play, Pause } from "lucide-react";
 import { toast } from "sonner";
 import { Tables } from "@/integrations/supabase/types";
 
@@ -20,6 +20,8 @@ interface Story {
   cover_image_url: string | null;
   thumbnail_url?: string | null;
   view_count: number;
+  views_count?: number | null;
+  likes_count?: number | null;
   audio_status: string | null;
   audio_url: string | null;
   created_at: string;
@@ -36,13 +38,25 @@ const Home = () => {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<"new" | "views">("new");
   const [contentType, setContentType] = useState<"all" | "story" | "news">("all");
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [tags, setTags] = useState<Array<{ id: string; name: string }>>([]);
   const navigate = useNavigate();
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [audioEl] = useState(() => new Audio());
   const location = useLocation();
 
   useEffect(() => {
     setPage(1);
     fetchStories(1, true);
-  }, [search, sort, contentType]);
+  }, [search, sort, contentType, selectedTag]);
+
+  useEffect(() => {
+    const loadTags = async () => {
+      const { data } = await supabase.from('tags').select('id, name').order('name');
+      setTags(data || []);
+    };
+    loadTags();
+  }, []);
 
   // Sync contentType/sort from URL query
   useEffect(() => {
@@ -61,7 +75,7 @@ const Home = () => {
     try {
       setLoading(true);
       
-      const query = supabase
+      let query: any = (supabase as any)
         .from("stories")
         .select(`
           id,
@@ -93,6 +107,21 @@ const Home = () => {
         );
       }
 
+      // Tag filter via join table
+      if (selectedTag) {
+        const { data: tagJoin } = await (supabase as any)
+          .from('story_tags')
+          .select('story_id')
+          .eq('tag_id', selectedTag);
+        const taggedIds: string[] = ((tagJoin || []) as Array<{ story_id: string }>).map((r) => String(r.story_id));
+        if (taggedIds.length === 0) {
+          setStories([]);
+          setLoading(false);
+          return;
+        }
+        query = (query as any).in('id', taggedIds as string[]);
+      }
+
       // Sorting
       if (sort === "new") {
         query.order("created_at", { ascending: false });
@@ -110,13 +139,13 @@ const Home = () => {
       if (error) throw error;
       
       // Get unique author IDs to fetch profiles
-      const authorIds = [...new Set((data || []).map((story: any) => story.author_id))];
+      const authorIds: string[] = [...new Set((data || []).map((story: any) => String(story.author_id)))] as string[];
       
       // Fetch profiles for all authors
-      const { data: profilesData } = await supabase
+      const { data: profilesData } = await (supabase as any)
         .from('profiles')
         .select('id, full_name')
-        .in('id', authorIds);
+        .in('id', authorIds as string[]);
       
       // Create a map of author_id to profile
       const profilesMap = new Map();
@@ -124,10 +153,25 @@ const Home = () => {
         profilesMap.set(profile.id, profile);
       });
       
-      // Merge stories with profiles
+      // Compute likes per page
+      const ids: string[] = (data || []).map((s: any) => String(s.id));
+      let likesCountMap = new Map<string, number>();
+      if (ids.length) {
+        const { data: likesRows } = await (supabase as any)
+          .from('story_likes')
+          .select('story_id')
+          .in('story_id', ids);
+        (likesRows || []).forEach((r: any) => {
+          const key = String(r.story_id);
+          likesCountMap.set(key, (likesCountMap.get(key) || 0) + 1);
+        });
+      }
+
+      // Merge stories with profiles and likes
       const storiesWithProfiles = (data || []).map((story: any) => ({
         ...story,
-        profiles: profilesMap.get(story.author_id) || null
+        profiles: profilesMap.get(story.author_id) || null,
+        likes_count: likesCountMap.get(String(story.id)) || 0,
       }));
       
       if (replace) {
@@ -162,7 +206,7 @@ const Home = () => {
           </p>
         </div>
 
-        <div className="mb-8 flex flex-col md:flex-row items-stretch md:items-center gap-4">
+        <div className="mb-4 flex flex-col md:flex-row items-stretch md:items-center gap-4">
           <div className="flex-1">
             <Input
               placeholder="Tìm kiếm theo tiêu đề hoặc mô tả..."
@@ -215,6 +259,26 @@ const Home = () => {
           </div>
         </div>
 
+        {/* Tag filter */}
+        <div className="mb-8 flex flex-wrap items-center gap-2">
+          <button
+            className={`px-3 py-1 rounded-full border text-sm ${selectedTag ? '' : 'bg-primary text-primary-foreground'}`}
+            onClick={() => setSelectedTag(null)}
+          >
+            Tất cả thẻ
+          </button>
+          {tags.map((t) => (
+            <button
+              key={t.id}
+              className={`px-3 py-1 rounded-full border text-sm ${selectedTag === t.id ? 'bg-primary text-primary-foreground' : ''}`}
+              onClick={() => setSelectedTag(t.id)}
+              title={t.name}
+            >
+              {t.name}
+            </button>
+          ))}
+        </div>
+
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -251,6 +315,30 @@ const Home = () => {
                       <BookOpen className="w-16 h-16 text-muted-foreground" />
                     </div>
                   )}
+                  {story.audio_url && (
+                    <button
+                      className="absolute bottom-3 right-3 z-10 bg-black/60 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-black/70"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (playingId === story.id) {
+                          audioEl.pause();
+                          setPlayingId(null);
+                        } else {
+                          try {
+                            audioEl.pause();
+                          } catch {}
+                          audioEl.src = story.audio_url!;
+                          audioEl.currentTime = 0;
+                          audioEl.play();
+                          setPlayingId(story.id);
+                          audioEl.onended = () => setPlayingId(null);
+                        }
+                      }}
+                      title={playingId === story.id ? 'Tạm dừng' : 'Phát audio'}
+                    >
+                      {playingId === story.id ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                    </button>
+                  )}
                 </div>
 
                 <div className="p-6">
@@ -274,6 +362,12 @@ const Home = () => {
                         <Eye className="w-3 h-3 mr-1" />
                         {story.view_count}
                       </span>
+                      {typeof (story as any).likes_count === 'number' && (
+                        <span className="flex items-center">
+                          <Heart className="w-3 h-3 mr-1" />
+                          {(story as any).likes_count}
+                        </span>
+                      )}
                       {story.audio_url && (
                         <span className="flex items-center">
                           <Volume2 className="w-3 h-3 mr-1" />

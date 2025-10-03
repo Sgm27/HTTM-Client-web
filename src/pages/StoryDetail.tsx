@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import Header from "@/components/Header";
@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card as UICard } from "@/components/ui/card";
 import { Card } from "@/components/ui/card";
-import { ArrowLeft, Clock, Eye, Volume2, VolumeX, BookOpen, Newspaper, Pause, Play } from "lucide-react";
+import { ArrowLeft, Clock, Eye, Volume2, VolumeX, BookOpen, Newspaper, Pause, Play, Heart, Bookmark, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 
 interface StoryData {
@@ -45,12 +45,26 @@ const StoryDetail = () => {
   const [loading, setLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audio] = useState(new Audio());
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [speed, setSpeed] = useState(1);
   const [relatedStories, setRelatedStories] = useState<StoryData[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isLiked, setIsLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState<number>(0);
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [bookmarkCount, setBookmarkCount] = useState<number>(0);
+  const [comments, setComments] = useState<Array<{ id: string; content: string; created_at: string; user_id: string; user_name: string | null }>>([]);
+  const [newComment, setNewComment] = useState("");
+  const listenSessionStartRef = useRef<number | null>(null);
+  const progressTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (id) {
       fetchStory();
       incrementViewCount();
+      loadUserAndSocial();
+      loadComments();
     }
   }, [id]);
 
@@ -101,13 +115,20 @@ const StoryDetail = () => {
         .select("*")
         .eq("content_id", id)
         .eq("generation_status", "completed")
-        .single();
+        .maybeSingle();
 
+      const demoUrl = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
       if (audioData) {
         setAudioData(audioData);
         audio.src = audioData.audio_url;
-        audio.onended = () => setIsPlaying(false);
+      } else {
+        // Demo audio when no generated audio exists yet
+        audio.src = demoUrl;
       }
+      audio.onended = () => setIsPlaying(false);
+      audio.onloadedmetadata = () => setDuration(Math.floor(audio.duration || 0));
+      audio.ontimeupdate = () => setPosition(Math.floor(audio.currentTime || 0));
+      audio.playbackRate = speed;
 
       // Fetch related stories (same content type, different story)
       const { data: relatedData } = await supabase
@@ -150,6 +171,97 @@ const StoryDetail = () => {
     }
   };
 
+  const loadComments = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('story_comments')
+        .select('id, content, created_at, user_id')
+        .eq('story_id', id as string)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      const userIds = [...new Set((data || []).map((c) => c.user_id))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', userIds);
+      const map = new Map<string, string | null>();
+      (profiles || []).forEach((p: any) => map.set(p.id, p.full_name));
+      setComments(
+        (data || []).map((c: any) => ({
+          id: c.id,
+          content: c.content,
+          created_at: c.created_at,
+          user_id: c.user_id,
+          user_name: map.get(c.user_id) ?? null,
+        }))
+      );
+    } catch (e) {
+      // non-fatal
+    }
+  };
+
+  const submitComment = async () => {
+    const user = await requireAuth();
+    if (!user) return;
+    const content = newComment.trim();
+    if (!content) return;
+    try {
+      const { data, error } = await supabase
+        .from('story_comments')
+        .insert({ story_id: id as string, user_id: user.id, content })
+        .select('*')
+        .single();
+      if (error) throw error;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .single();
+      setComments((prev) => [
+        ...prev,
+        {
+          id: data.id,
+          content: data.content,
+          created_at: data.created_at,
+          user_id: user.id,
+          user_name: profile?.full_name ?? null,
+        },
+      ]);
+      setNewComment("");
+    } catch (e) {
+      toast.error('Không thể gửi bình luận');
+    }
+  };
+
+  const loadUserAndSocial = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUserId(user?.id ?? null);
+
+      // Counts
+      const [{ count: likesCnt }, { count: bmsCnt }] = await Promise.all([
+        supabase.from('story_likes').select('*', { count: 'exact', head: true }).eq('story_id', id as string),
+        supabase.from('user_bookmarks').select('*', { count: 'exact', head: true }).eq('story_id', id as string)
+      ]);
+      setLikeCount(likesCnt ?? 0);
+      setBookmarkCount(bmsCnt ?? 0);
+
+      if (user) {
+        const [likeRes, bmRes] = await Promise.all([
+          supabase.from('story_likes').select('story_id').eq('story_id', id as string).eq('user_id', user.id).maybeSingle(),
+          supabase.from('user_bookmarks').select('story_id').eq('story_id', id as string).eq('user_id', user.id).maybeSingle()
+        ]);
+        setIsLiked(!!likeRes.data);
+        setIsBookmarked(!!bmRes.data);
+      } else {
+        setIsLiked(false);
+        setIsBookmarked(false);
+      }
+    } catch (e) {
+      // non-fatal
+    }
+  };
+
   const incrementViewCount = async () => {
     try {
       // Prefer atomic increment via logging view + count from view table
@@ -166,6 +278,156 @@ const StoryDetail = () => {
       audio.play();
     }
     setIsPlaying(!isPlaying);
+  };
+
+  // Listening tracking and reading history
+  useEffect(() => {
+    const attach = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const onPlay = () => {
+        listenSessionStartRef.current = audio.currentTime;
+        // start periodic progress updates
+        if (progressTimerRef.current) window.clearInterval(progressTimerRef.current);
+        progressTimerRef.current = window.setInterval(() => {
+          void updateReadingHistory(user.id);
+        }, 5000);
+      };
+
+      const finalizeListen = async () => {
+        if (listenSessionStartRef.current == null) return;
+        const startAt = listenSessionStartRef.current;
+        const listened = Math.max(0, Math.floor(audio.currentTime - startAt));
+        if (listened > 0) {
+          try {
+            await supabase.from('story_listens').insert({
+              story_id: id as string,
+              user_id: user.id,
+              listened_seconds: listened,
+            });
+          } catch {}
+        }
+        listenSessionStartRef.current = null;
+      };
+
+      const onPause = async () => {
+        await finalizeListen();
+        if (progressTimerRef.current) {
+          window.clearInterval(progressTimerRef.current);
+          progressTimerRef.current = null;
+        }
+        await updateReadingHistory(user.id);
+      };
+
+      const onEnded = async () => {
+        await finalizeListen();
+        if (progressTimerRef.current) {
+          window.clearInterval(progressTimerRef.current);
+          progressTimerRef.current = null;
+        }
+        await updateReadingHistory(user.id);
+      };
+
+      audio.addEventListener('play', onPlay);
+      audio.addEventListener('pause', onPause);
+      audio.addEventListener('ended', onEnded);
+
+      return () => {
+        audio.removeEventListener('play', onPlay);
+        audio.removeEventListener('pause', onPause);
+        audio.removeEventListener('ended', onEnded);
+        if (progressTimerRef.current) {
+          window.clearInterval(progressTimerRef.current);
+          progressTimerRef.current = null;
+        }
+      };
+    };
+
+    const cleanupPromise = attach();
+    return () => {
+      void cleanupPromise;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audio, id, audioData?.audio_duration]);
+
+  const updateReadingHistory = async (uid: string) => {
+    try {
+      const lastPos = Math.floor(audio.currentTime || 0);
+      const duration = audioData?.audio_duration || 0;
+      const progress = duration > 0 ? Math.min(100, Math.max(0, (lastPos / duration) * 100)) : 0;
+      await supabase
+        .from('reading_history')
+        .upsert({
+          user_id: uid,
+          story_id: id as string,
+          last_position_seconds: lastPos,
+          progress_percent: progress,
+          last_accessed_at: new Date().toISOString(),
+        }, { onConflict: 'user_id,story_id' });
+    } catch {}
+  };
+
+  const requireAuth = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error('Vui lòng đăng nhập để thực hiện thao tác');
+      navigate('/auth');
+      return null;
+    }
+    return user;
+  };
+
+  const onToggleLike = async () => {
+    const user = await requireAuth();
+    if (!user) return;
+    try {
+      if (isLiked) {
+        const { error } = await supabase
+          .from('story_likes')
+          .delete()
+          .eq('story_id', id as string)
+          .eq('user_id', user.id);
+        if (error) throw error;
+        setIsLiked(false);
+        setLikeCount((c) => Math.max(0, c - 1));
+      } else {
+        const { error } = await supabase
+          .from('story_likes')
+          .insert({ story_id: id as string, user_id: user.id });
+        if (error) throw error;
+        setIsLiked(true);
+        setLikeCount((c) => c + 1);
+      }
+    } catch (e: any) {
+      toast.error('Không thể cập nhật lượt thích');
+    }
+  };
+
+  const onToggleBookmark = async () => {
+    const user = await requireAuth();
+    if (!user) return;
+    try {
+      if (isBookmarked) {
+        const { error } = await supabase
+          .from('user_bookmarks')
+          .delete()
+          .eq('story_id', id as string)
+          .eq('user_id', user.id);
+        if (error) throw error;
+        setIsBookmarked(false);
+        setBookmarkCount((c) => Math.max(0, c - 1));
+      } else {
+        const { error } = await supabase
+          .from('user_bookmarks')
+          .insert({ story_id: id as string, user_id: user.id });
+        if (error) throw error;
+        setIsBookmarked(true);
+        setBookmarkCount((c) => c + 1);
+      }
+    } catch (e: any) {
+      toast.error('Không thể cập nhật đánh dấu');
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -305,7 +567,25 @@ const StoryDetail = () => {
             )}
 
             {/* Share buttons */}
-            <div className="flex gap-2 mb-8">
+            <div className="flex flex-wrap gap-2 mb-8">
+              <Button
+                variant={isLiked ? "default" : "outline"}
+                size="sm"
+                onClick={onToggleLike}
+                className="flex items-center gap-2"
+              >
+                <Heart className="w-4 h-4" />
+                {likeCount}
+              </Button>
+              <Button
+                variant={isBookmarked ? "default" : "outline"}
+                size="sm"
+                onClick={onToggleBookmark}
+                className="flex items-center gap-2"
+              >
+                <Bookmark className="w-4 h-4" />
+                {bookmarkCount}
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -353,6 +633,36 @@ const StoryDetail = () => {
               ))}
             </div>
           </Card>
+          {/* Comments */}
+          <section className="mt-8">
+            <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <MessageSquare className="w-5 h-5" />
+              Bình luận ({comments.length})
+            </h3>
+            <div className="space-y-4">
+              {comments.length === 0 ? (
+                <p className="text-muted-foreground">Hãy là người đầu tiên bình luận.</p>
+              ) : (
+                comments.map((c) => (
+                  <div key={c.id} className="p-4 border rounded-lg">
+                    <div className="text-sm text-muted-foreground mb-1">
+                      {c.user_name || 'Người dùng'} • {formatDate(c.created_at)}
+                    </div>
+                    <div>{c.content}</div>
+                  </div>
+                ))
+              )}
+              <div className="flex items-start gap-2">
+                <textarea
+                  className="flex-1 border rounded-md p-2 min-h-[80px] bg-background"
+                  placeholder="Viết bình luận..."
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                />
+                <Button onClick={submitComment}>Gửi</Button>
+              </div>
+            </div>
+          </section>
         </article>
 
         {/* Related stories */}
@@ -400,8 +710,63 @@ const StoryDetail = () => {
           </section>
         )}
       </main>
+
+      {/* Bottom audio bar demo (always visible) */}
+      <div className="fixed bottom-0 left-0 right-0 border-t bg-card/95 backdrop-blur p-3">
+          <div className="max-w-5xl mx-auto flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleAudio}
+              className="shrink-0"
+            >
+              {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+            </Button>
+            <div className="flex-1">
+              <div className="text-sm font-medium mb-1 line-clamp-1">{story?.title || 'Đang phát audio'}</div>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(1, duration)}
+                value={Math.min(position, Math.max(1, duration))}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  audio.currentTime = v;
+                  setPosition(v);
+                }}
+                className="w-full"
+              />
+              <div className="text-xs text-muted-foreground flex justify-between">
+                <span>{formatTime(position)}</span>
+                <span>{formatTime(duration)}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {[1, 1.5, 2].map((s) => (
+                <Button
+                  key={s}
+                  size="sm"
+                  variant={speed === s ? 'default' : 'outline'}
+                  onClick={() => {
+                    setSpeed(s);
+                    audio.playbackRate = s;
+                  }}
+                >
+                  {s}x
+                </Button>
+              ))}
+            </div>
+          </div>
+      </div>
     </div>
   );
 };
 
 export default StoryDetail;
+
+function formatTime(sec: number) {
+  const s = Math.max(0, Math.floor(sec || 0));
+  const mPart = Math.floor(s / 60).toString().padStart(2, '0');
+  const sPart = (s % 60).toString().padStart(2, '0');
+  return `${mPart}:${sPart}`;
+}
