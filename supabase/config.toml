@@ -1,0 +1,25 @@
+project_id = "opdchkkmyjaccbkkdycl"
+
+[auth.email.template.confirmation]
+subject = "Xác nhận đăng ký tài khoản"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.magic_link]
+subject = "Liên kết đăng nhập (Magic Link)"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.recovery]
+subject = "Khôi phục mật khẩu"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.invite]
+subject = "Lời mời tham gia hệ thống"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.email_change]
+subject = "Xác nhận thay đổi email"
+content_path = "./supabase/templates/email_change.html"
+
+[auth.email.template.reauthentication]
+subject = "Xác thực lại tài khoản"
+content_path = "./supabase/templates/reauthentication.html"

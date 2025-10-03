@@ -1,0 +1,47 @@
+---
+alwaysApply: true
+description: Hướng dẫn sử dụng Supabase MCP cho mọi tác vụ cần truy cập cơ sở dữ liệu
+---
+
+## Quy ước sử dụng Supabase MCP cho tác vụ cơ sở dữ liệu
+
+Khi một tác vụ yêu cầu truy cập, thay đổi, hay quan sát cơ sở dữ liệu, ưu tiên sử dụng bộ công cụ Supabase MCP thay vì gọi trực tiếp SDK hay kết nối thủ công. Điều này đảm bảo tính nhất quán, an toàn và khả năng truy vết.
+
+### Khi nào phải dùng Supabase MCP
+- **Truy vấn dữ liệu**: đọc/ghi/chỉnh sửa qua SQL.
+- **Thay đổi lược đồ**: tạo bảng, cột, chỉ mục, ràng buộc, policy.
+- **Quản lý di trú (migrations)**: áp dụng/kiểm tra/trạng thái migrations.
+- **Quan sát & chẩn đoán**: xem log dịch vụ, kiểm tra advisors.
+- **Tích hợp Edge Functions**: liệt kê, lấy nội dung, triển khai phiên bản mới.
+
+### Ánh xạ tác vụ -> Công cụ Supabase MCP
+- **Tìm tài liệu mới nhất**: dùng `functions.mcp_supabase_search_docs` với truy vấn cụ thể thay vì tìm kiếm chung chung.
+- **Chạy truy vấn dữ liệu (DML/SELECT)**: dùng `functions.mcp_supabase_execute_sql`.
+- **Thay đổi lược đồ (DDL)**: dùng `functions.mcp_supabase_apply_migration` (không dùng execute_sql cho DDL).
+- **Xem bảng/tiện ích mở rộng/migrations**: `functions.mcp_supabase_list_tables`, `functions.mcp_supabase_list_extensions`, `functions.mcp_supabase_list_migrations`.
+- **Sinh types TypeScript**: `functions.mcp_supabase_generate_typescript_types`.
+- **Lấy thông tin dự án/khóa**: `functions.mcp_supabase_get_project_url`, `functions.mcp_supabase_get_anon_key`.
+- **Logs & chẩn đoán**: `functions.mcp_supabase_get_logs` (api/auth/storage/realtime/postgres...), `functions.mcp_supabase_get_advisors` (kèm link khuyến nghị).
+- **Nhánh phát triển DB**: `functions.mcp_supabase_create_branch`, `functions.mcp_supabase_list_branches`, `functions.mcp_supabase_merge_branch`, `functions.mcp_supabase_reset_branch`, `functions.mcp_supabase_rebase_branch`.
+- **Edge Functions**: `functions.mcp_supabase_list_edge_functions`, `functions.mcp_supabase_get_edge_function`, `functions.mcp_supabase_deploy_edge_function`.
+
+### Quy tắc an toàn & quy trình
+- **Dùng migration cho mọi thay đổi lược đồ** để đảm bảo có thể theo dõi và rollback. Không chạy DDL trực tiếp bằng execute_sql.
+- **Kiểm tra advisors sau thay đổi lược đồ** bằng `functions.mcp_supabase_get_advisors` (security và performance) và đính kèm link khuyến nghị trong báo cáo.
+- **Ghi log thao tác quan trọng**: sau khi chạy migrations lớn, lấy log `postgres` hoặc `api` để xác minh.
+- **Phân tách môi trường**: dùng tính năng nhánh DB để thử nghiệm trước khi merge về production.
+
+### Liên kết mã trong dự án
+- Client Supabase phía ứng dụng: `[src/integrations/supabase/client.ts](mdc:src/integrations/supabase/client.ts)`
+- Kiểu dữ liệu sinh ra/đồng bộ: `[src/integrations/supabase/types.ts](mdc:src/integrations/supabase/types.ts)`
+- Migrations theo dõi trong repo: `[supabase/migrations](mdc:supabase/migrations)`
+
+### Gợi ý thực hành tốt
+- Luôn bắt đầu bằng việc tra cứu tài liệu bằng `mcp_supabase_search_docs` để cập nhật thay đổi API mới nhất.
+- Với DDL, đặt tên migration ngắn gọn, có ý nghĩa nghiệp vụ.
+- Với DML hàng loạt, chạy trong giao dịch nếu phù hợp để đảm bảo tính toàn vẹn.
+- Sau khi cập nhật lược đồ, cân nhắc chạy `mcp_supabase_generate_typescript_types` và cập nhật code tham chiếu types nếu cần.
+
+### Ngoại lệ
+Nếu một tác vụ không thể thực hiện qua MCP (ví dụ quyền hạn, lỗi môi trường), ghi rõ lý do trong ghi chú thực thi, tham chiếu ticket/bằng chứng, và chỉ khi đó mới cân nhắc phương án thay thế.
+

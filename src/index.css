@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 40 10% 98%;
+    --foreground: 240 30% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 30% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 30% 12%;
+
+    --primary: 240 48% 28%;
+    --primary-foreground: 40 10% 98%;
+
+    --secondary: 40 85% 65%;
+    --secondary-foreground: 240 30% 12%;
+
+    --muted: 40 20% 92%;
+    --muted-foreground: 240 15% 45%;
+
+    --accent: 40 85% 65%;
+    --accent-foreground: 240 30% 12%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 40 10% 98%;
+
+    --border: 240 12% 88%;
+    --input: 240 12% 88%;
+    --ring: 240 48% 28%;
+
+    --radius: 0.75rem;
+
+    --gradient-hero: linear-gradient(135deg, hsl(240 48% 28%), hsl(260 45% 35%));
+    --gradient-card: linear-gradient(to bottom, hsl(0 0% 100%), hsl(40 20% 96%));
+    --shadow-soft: 0 4px 20px -2px hsl(240 30% 12% / 0.08);
+    --shadow-hover: 0 8px 30px -4px hsl(240 30% 12% / 0.12);
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .dark {
+    --background: 240 30% 8%;
+    --foreground: 40 10% 98%;
+
+    --card: 240 25% 12%;
+    --card-foreground: 40 10% 98%;
+
+    --popover: 240 25% 12%;
+    --popover-foreground: 40 10% 98%;
+
+    --primary: 40 85% 65%;
+    --primary-foreground: 240 30% 12%;
+
+    --secondary: 240 35% 20%;
+    --secondary-foreground: 40 10% 98%;
+
+    --muted: 240 25% 18%;
+    --muted-foreground: 240 10% 65%;
+
+    --accent: 40 75% 55%;
+    --accent-foreground: 240 30% 12%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 40 10% 98%;
+
+    --border: 240 20% 20%;
+    --input: 240 20% 20%;
+    --ring: 40 85% 65%;
+
+    --gradient-hero: linear-gradient(135deg, hsl(260 45% 25%), hsl(240 40% 15%));
+    --gradient-card: linear-gradient(to bottom, hsl(240 25% 12%), hsl(240 25% 10%));
+    --shadow-soft: 0 4px 20px -2px hsl(0 0% 0% / 0.3);
+    --shadow-hover: 0 8px 30px -4px hsl(0 0% 0% / 0.4);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
