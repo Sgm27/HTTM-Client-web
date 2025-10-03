@@ -1,73 +1,73 @@
-# Welcome to your Lovable project
+# HTTM Client Web
 
-## Project info
+Ứng dụng web đồng bộ truyện/tin tức, xây dựng với Vite + React + TypeScript, Tailwind CSS và shadcn-ui. Tích hợp Supabase cho xác thực và dữ liệu.
 
-**URL**: https://lovable.dev/projects/bf19dba0-7496-458f-a426-86aeb13379f0
+Repository: `https://github.com/Sgm27/HTTM-Client-web`
 
-## How can I edit this code?
+## Yêu cầu hệ thống
 
-There are several ways of editing your application.
+- Node.js >= 18 (khuyến nghị quản lý qua nvm)
+- npm hoặc pnpm/yarn
 
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/bf19dba0-7496-458f-a426-86aeb13379f0) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+## Bắt đầu
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+git clone https://github.com/Sgm27/HTTM-Client-web.git
+cd HTTM-Client-web
+npm install
+```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+Tạo file `.env` (đã được ignore) trong thư mục gốc với nội dung tương tự:
 
-# Step 3: Install the necessary dependencies.
-npm i
+```sh
+VITE_SUPABASE_URL="https://<your-project-ref>.supabase.co"
+VITE_SUPABASE_ANON_KEY="<your-anon-key>"
+# Tuỳ chọn: chỉ dùng cho tác vụ CLI/migration, không commit
+# SUPABASE_ACCESS_TOKEN="<personal-access-token>"
+```
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+Chạy chế độ phát triển:
+
+```sh
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+Build production và preview:
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```sh
+npm run build
+npm run preview
+```
 
-**Use GitHub Codespaces**
+Kiểm tra lint (nếu cần):
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```sh
+npm run lint
+```
 
-## What technologies are used for this project?
+## Cấu trúc dự án
 
-This project is built with:
+- `src/pages`: các trang như `Home`, `Auth`, `Account`, `Upload`, `StoryDetail`
+- `src/components`: component dùng chung, `components/ui` từ shadcn-ui
+- `src/integrations/supabase`: `client.ts` cấu hình Supabase, `types.ts` kiểu dữ liệu
+- `supabase/migrations`: các migration theo dõi dưới dạng SQL
+- `public`: tài nguyên tĩnh
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Công nghệ
 
-## How can I deploy this project?
+- Vite, React, TypeScript
+- Tailwind CSS, shadcn-ui
+- Supabase (Auth, DB)
 
-Simply open [Lovable](https://lovable.dev/projects/bf19dba0-7496-458f-a426-86aeb13379f0) and click on Share -> Publish.
+## Ghi chú bảo mật
 
-## Can I connect a custom domain to my Lovable project?
+- Không commit file `.env`. Các secret (ví dụ Supabase tokens) cần được lưu trữ an toàn và rotate khi cần.
+- Nếu trước đây `.env` đã bị commit, hãy xoá khỏi lịch sử và thay thế secret trên Dashboard.
 
-Yes, you can!
+## Đóng góp
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+Pull Request luôn được hoan nghênh. Vui lòng tạo issue trước nếu thay đổi lớn.
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## License
+
+MIT
