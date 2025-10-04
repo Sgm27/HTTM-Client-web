@@ -3,10 +3,19 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
+import { useUserRole } from "@/hooks/useUserRole";
 
 const Index = () => {
   const navigate = useNavigate();
+  const { role, loading: roleLoading } = useUserRole();
   const [continueList, setContinueList] = useState<any[]>([]);
+
+  // Redirect admin to admin panel
+  useEffect(() => {
+    if (!roleLoading && role === "admin") {
+      navigate("/admin");
+    }
+  }, [role, roleLoading, navigate]);
 
   useEffect(() => {
     const load = async () => {
@@ -19,7 +28,7 @@ const Index = () => {
         .order("last_accessed_at", { ascending: false })
         .limit(6);
       if (!error && data && data.length) {
-        const ids = data.map((r) => r.story_id);
+        const ids = data.map((r: any) => r.story_id);
         const { data: stories } = await supabase
           .from("stories_with_stats")
           .select("*")
@@ -29,6 +38,11 @@ const Index = () => {
     };
     load();
   }, []);
+
+  // Don't render home if redirecting to admin
+  if (!roleLoading && role === "admin") {
+    return null;
+  }
 
   return (
     <>

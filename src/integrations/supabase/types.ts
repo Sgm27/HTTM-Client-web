@@ -7,183 +7,48 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
-  }
   public: {
     Tables: {
-      audios: {
+      admin_logs: {
         Row: {
-          audio_duration: number | null
-          audio_format: string | null
-          audio_url: string
-          content_id: string | null
+          action: string
+          admin_id: string | null
           created_at: string | null
-          generation_status: string | null
+          details: Json | null
           id: string
-          updated_at: string | null
+          ip_address: string | null
+          target_id: string | null
+          target_type: string | null
         }
         Insert: {
-          audio_duration?: number | null
-          audio_format?: string | null
-          audio_url: string
-          content_id?: string | null
+          action: string
+          admin_id?: string | null
           created_at?: string | null
-          generation_status?: string | null
+          details?: Json | null
           id?: string
-          updated_at?: string | null
+          ip_address?: string | null
+          target_id?: string | null
+          target_type?: string | null
         }
         Update: {
-          audio_duration?: number | null
-          audio_format?: string | null
-          audio_url?: string
-          content_id?: string | null
+          action?: string
+          admin_id?: string | null
           created_at?: string | null
-          generation_status?: string | null
+          details?: Json | null
           id?: string
-          updated_at?: string | null
+          ip_address?: string | null
+          target_id?: string | null
+          target_type?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "audios_content_id_fkey"
-            columns: ["content_id"]
+            foreignKeyName: "admin_logs_admin_id_fkey"
+            columns: ["admin_id"]
             isOneToOne: false
-            referencedRelation: "stories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "audios_content_id_fkey"
-            columns: ["content_id"]
-            isOneToOne: false
-            referencedRelation: "stories_with_stats"
+            referencedRelation: "admin_user_details"
             referencedColumns: ["id"]
           },
         ]
-      }
-      extracted_texts: {
-        Row: {
-          content_id: string | null
-          created_at: string | null
-          extracted_text: string | null
-          id: string
-          original_text: string | null
-          processing_logs: Json | null
-          processing_status: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          content_id?: string | null
-          created_at?: string | null
-          extracted_text?: string | null
-          id?: string
-          original_text?: string | null
-          processing_logs?: Json | null
-          processing_status?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          content_id?: string | null
-          created_at?: string | null
-          extracted_text?: string | null
-          id?: string
-          original_text?: string | null
-          processing_logs?: Json | null
-          processing_status?: string | null
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "extracted_texts_content_id_fkey"
-            columns: ["content_id"]
-            isOneToOne: true
-            referencedRelation: "stories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "extracted_texts_content_id_fkey"
-            columns: ["content_id"]
-            isOneToOne: true
-            referencedRelation: "stories_with_stats"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      files: {
-        Row: {
-          content_id: string | null
-          created_at: string | null
-          file_name: string
-          file_path: string
-          file_size: number | null
-          file_type: string
-          id: string
-          mime_type: string
-          updated_at: string | null
-        }
-        Insert: {
-          content_id?: string | null
-          created_at?: string | null
-          file_name: string
-          file_path: string
-          file_size?: number | null
-          file_type: string
-          id?: string
-          mime_type: string
-          updated_at?: string | null
-        }
-        Update: {
-          content_id?: string | null
-          created_at?: string | null
-          file_name?: string
-          file_path?: string
-          file_size?: number | null
-          file_type?: string
-          id?: string
-          mime_type?: string
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "files_content_id_fkey"
-            columns: ["content_id"]
-            isOneToOne: false
-            referencedRelation: "stories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "files_content_id_fkey"
-            columns: ["content_id"]
-            isOneToOne: false
-            referencedRelation: "stories_with_stats"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      profiles: {
-        Row: {
-          avatar_url: string | null
-          created_at: string
-          full_name: string | null
-          id: string
-          updated_at: string
-        }
-        Insert: {
-          avatar_url?: string | null
-          created_at?: string
-          full_name?: string | null
-          id: string
-          updated_at?: string
-        }
-        Update: {
-          avatar_url?: string | null
-          created_at?: string
-          full_name?: string | null
-          id?: string
-          updated_at?: string
-        }
-        Relationships: []
       }
       reading_history: {
         Row: {
@@ -213,22 +78,6 @@ export type Database = {
           story_id?: string
           user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "reading_history_story_id_fkey"
-            columns: ["story_id"]
-            isOneToOne: false
-            referencedRelation: "stories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reading_history_story_id_fkey"
-            columns: ["story_id"]
-            isOneToOne: false
-            referencedRelation: "stories_with_stats"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       stories: {
         Row: {
@@ -288,305 +137,6 @@ export type Database = {
           updated_at?: string
           view_count?: number | null
         }
-        Relationships: []
-      }
-      story_comments: {
-        Row: {
-          content: string
-          created_at: string
-          id: string
-          story_id: string
-          user_id: string
-        }
-        Insert: {
-          content: string
-          created_at?: string
-          id?: string
-          story_id: string
-          user_id: string
-        }
-        Update: {
-          content?: string
-          created_at?: string
-          id?: string
-          story_id?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "story_comments_story_id_fkey"
-            columns: ["story_id"]
-            isOneToOne: false
-            referencedRelation: "stories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "story_comments_story_id_fkey"
-            columns: ["story_id"]
-            isOneToOne: false
-            referencedRelation: "stories_with_stats"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      story_likes: {
-        Row: {
-          created_at: string
-          story_id: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          story_id: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          story_id?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "story_likes_story_id_fkey"
-            columns: ["story_id"]
-            isOneToOne: false
-            referencedRelation: "stories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "story_likes_story_id_fkey"
-            columns: ["story_id"]
-            isOneToOne: false
-            referencedRelation: "stories_with_stats"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      story_listens: {
-        Row: {
-          created_at: string
-          id: string
-          listened_seconds: number | null
-          story_id: string
-          user_id: string | null
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          listened_seconds?: number | null
-          story_id: string
-          user_id?: string | null
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          listened_seconds?: number | null
-          story_id?: string
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "story_listens_story_id_fkey"
-            columns: ["story_id"]
-            isOneToOne: false
-            referencedRelation: "stories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "story_listens_story_id_fkey"
-            columns: ["story_id"]
-            isOneToOne: false
-            referencedRelation: "stories_with_stats"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      story_tags: {
-        Row: {
-          created_at: string
-          story_id: string
-          tag_id: string
-        }
-        Insert: {
-          created_at?: string
-          story_id: string
-          tag_id: string
-        }
-        Update: {
-          created_at?: string
-          story_id?: string
-          tag_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "story_tags_story_id_fkey"
-            columns: ["story_id"]
-            isOneToOne: false
-            referencedRelation: "stories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "story_tags_story_id_fkey"
-            columns: ["story_id"]
-            isOneToOne: false
-            referencedRelation: "stories_with_stats"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "story_tags_tag_id_fkey"
-            columns: ["tag_id"]
-            isOneToOne: false
-            referencedRelation: "tags"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      story_views: {
-        Row: {
-          created_at: string
-          id: string
-          story_id: string
-          user_id: string | null
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          story_id: string
-          user_id?: string | null
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          story_id?: string
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "story_views_story_id_fkey"
-            columns: ["story_id"]
-            isOneToOne: false
-            referencedRelation: "stories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "story_views_story_id_fkey"
-            columns: ["story_id"]
-            isOneToOne: false
-            referencedRelation: "stories_with_stats"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      tags: {
-        Row: {
-          created_at: string
-          id: string
-          name: string
-          slug: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          name: string
-          slug: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          name?: string
-          slug?: string
-        }
-        Relationships: []
-      }
-      uploads: {
-        Row: {
-          created_at: string
-          extracted_text: string | null
-          id: string
-          ocr_text: string | null
-          original_file_path: string | null
-          original_mime: string | null
-          processing_error: string | null
-          processing_status: string
-          story_id: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          extracted_text?: string | null
-          id?: string
-          ocr_text?: string | null
-          original_file_path?: string | null
-          original_mime?: string | null
-          processing_error?: string | null
-          processing_status?: string
-          story_id?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          extracted_text?: string | null
-          id?: string
-          ocr_text?: string | null
-          original_file_path?: string | null
-          original_mime?: string | null
-          processing_error?: string | null
-          processing_status?: string
-          story_id?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "uploads_story_id_fkey"
-            columns: ["story_id"]
-            isOneToOne: false
-            referencedRelation: "stories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "uploads_story_id_fkey"
-            columns: ["story_id"]
-            isOneToOne: false
-            referencedRelation: "stories_with_stats"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      user_bookmarks: {
-        Row: {
-          created_at: string
-          story_id: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          story_id: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          story_id?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "user_bookmarks_story_id_fkey"
-            columns: ["story_id"]
-            isOneToOne: false
-            referencedRelation: "stories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "user_bookmarks_story_id_fkey"
-            columns: ["story_id"]
-            isOneToOne: false
-            referencedRelation: "stories_with_stats"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       user_roles: {
         Row: {
@@ -607,10 +157,117 @@ export type Database = {
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
         }
-        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          full_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          full_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+      }
+      tags: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          slug: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          slug: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          slug?: string
+        }
       }
     }
     Views: {
+      admin_dashboard_stats: {
+        Row: {
+          new_stories_this_week: number | null
+          new_users_this_week: number | null
+          pending_reports: number | null
+          total_comments: number | null
+          total_draft_stories: number | null
+          total_likes: number | null
+          total_listens: number | null
+          total_profiles: number | null
+          total_published_stories: number | null
+          total_rejected_stories: number | null
+          total_story_views: number | null
+          total_tags: number | null
+          total_users: number | null
+          total_views: number | null
+        }
+      }
+      admin_story_details: {
+        Row: {
+          audio_status: string | null
+          author_email: string | null
+          author_id: string | null
+          author_name: string | null
+          bookmarks_count: number | null
+          comments_count: number | null
+          content_type: string | null
+          created_at: string | null
+          description: string | null
+          id: string | null
+          is_public: boolean | null
+          likes_count: number | null
+          listens_count: number | null
+          status: string | null
+          tags: Json | null
+          title: string | null
+          updated_at: string | null
+          view_count: number | null
+          views_count: number | null
+        }
+      }
+      admin_user_details: {
+        Row: {
+          avatar_url: string | null
+          bookmarks_count: number | null
+          email: string | null
+          email_confirmed_at: string | null
+          full_name: string | null
+          id: string | null
+          last_active_at: string | null
+          last_sign_in_at: string | null
+          likes_count: number | null
+          role: Database["public"]["Enums"]["app_role"] | null
+          stories_count: number | null
+          total_bookmarks: number | null
+          total_comments_made: number | null
+          total_likes_given: number | null
+          total_listening_time_seconds: number | null
+          total_reading_time_seconds: number | null
+          total_stories_created: number | null
+          total_stories_listened: number | null
+          total_stories_read: number | null
+          user_created_at: string | null
+        }
+      }
       stories_with_stats: {
         Row: {
           audio_status: string | null
@@ -630,20 +287,25 @@ export type Database = {
           view_count: number | null
           views_count: number | null
         }
-        Relationships: []
       }
     }
     Functions: {
-      get_user_role: {
-        Args: { user_id: string }
-        Returns: string
+      admin_get_user_activity: {
+        Args: { p_limit?: number; p_user_id: string }
+        Returns: Array<{
+          activity_id: string
+          activity_time: string
+          activity_title: string
+          activity_type: string
+        }>
       }
-      has_role: {
-        Args: {
-          _role: Database["public"]["Enums"]["app_role"]
-          _user_id: string
-        }
-        Returns: boolean
+      admin_update_story_status: {
+        Args: { p_new_status: string; p_reason?: string; p_story_id: string }
+        Returns: void
+      }
+      admin_update_user_role: {
+        Args: { p_new_role: string; p_user_id: string }
+        Returns: void
       }
       is_admin: {
         Args: { user_id: string }
@@ -653,134 +315,14 @@ export type Database = {
     Enums: {
       app_role: "admin" | "user"
     }
-    CompositeTypes: {
-      [_ in never]: never
-    }
   }
 }
 
-type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+export type Tables<T extends keyof Database["public"]["Tables"]> =
+  Database["public"]["Tables"][T]["Row"]
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+export type Views<T extends keyof Database["public"]["Views"]> =
+  Database["public"]["Views"][T]["Row"]
 
-export type Tables<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
-      Row: infer R
-    }
-    ? R
-    : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R
-      }
-      ? R
-      : never
-    : never
-
-export type TablesInsert<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Insert: infer I
-    }
-    ? I
-    : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I
-      }
-      ? I
-      : never
-    : never
-
-export type TablesUpdate<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Update: infer U
-    }
-    ? U
-    : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U
-      }
-      ? U
-      : never
-    : never
-
-export type Enums<
-  DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
-> = DefaultSchemaEnumNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never
-
-export type CompositeTypes<
-  PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
-> = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-    : never
-
-export const Constants = {
-  public: {
-    Enums: {
-      app_role: ["admin", "user"],
-    },
-  },
-} as const
-
+export type Enums<T extends keyof Database["public"]["Enums"]> =
+  Database["public"]["Enums"][T]
