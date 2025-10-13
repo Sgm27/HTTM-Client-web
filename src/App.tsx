@@ -16,6 +16,8 @@ import UserManagement from "./pages/admin/UserManagement";
 import ContentManagement from "./pages/admin/ContentManagement";
 import Analytics from "./pages/admin/Analytics";
 import Settings from "./pages/admin/Settings";
+import StoryStats from "./pages/admin/StoryStats";
+import StoryStatsDetail from "./pages/admin/StoryStatsDetail";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +41,8 @@ const App = () => (
             <Route path="users" element={<UserManagement />} />
             <Route path="content" element={<ContentManagement />} />
             <Route path="analytics" element={<Analytics />} />
+            <Route path="story-stats" element={<StoryStats />} />
+            <Route path="story-stats/:id" element={<StoryStatsDetail />} />
             <Route path="settings" element={<Settings />} />
           </Route>
           

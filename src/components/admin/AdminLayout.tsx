@@ -11,6 +11,7 @@ import {
   LogOut,
   Menu,
   X,
+  TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -67,6 +68,7 @@ export default function AdminLayout() {
     { icon: Users, label: "Quản lý người dùng", path: "/admin/users" },
     { icon: FileText, label: "Quản lý nội dung", path: "/admin/content" },
     { icon: BarChart3, label: "Phân tích", path: "/admin/analytics" },
+    { icon: TrendingUp, label: "Thống kê truyện", path: "/admin/story-stats" },
     { icon: Settings, label: "Cài đặt", path: "/admin/settings" },
   ];
 
