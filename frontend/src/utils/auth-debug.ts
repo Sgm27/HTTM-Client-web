@@ -15,15 +15,8 @@ export const debugAuth = async () => {
     console.log('User Error:', userError);
     
     // Kiểm tra localStorage
-    const url = (import.meta as any).env?.VITE_SUPABASE_URL as string | undefined;
-    let projectRef = (import.meta as any).env?.VITE_SUPABASE_PROJECT_ID as string | undefined;
-    if (!projectRef && url) {
-      try {
-        const host = new URL(url).host; // <ref>.supabase.co
-        projectRef = host.split('.')[0];
-      } catch {}
-    }
-    const authKey = projectRef ? `sb-${projectRef}-auth-token` : undefined;
+    const backendUrl = (import.meta as any).env?.VITE_BACKEND_URL as string | undefined;
+    const authKey = supabase.auth.storageKey ?? undefined;
     const authData = authKey ? localStorage.getItem(authKey) : null;
     console.log('Auth Token in localStorage:', authData ? 'Exists' : 'Not found');
     
@@ -35,7 +28,7 @@ export const debugAuth = async () => {
       session,
       user,
       hasAuthToken: !!authData,
-      projectRef,
+      backendUrl,
       sessionError,
       userError
     };

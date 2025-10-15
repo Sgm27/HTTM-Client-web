@@ -20,10 +20,11 @@ npm install
 Tạo file `.env` (đã được ignore) trong thư mục gốc với nội dung tương tự:
 
 ```sh
-VITE_SUPABASE_URL="https://<your-project-ref>.supabase.co"
-VITE_SUPABASE_ANON_KEY="<your-anon-key>"
-# Tuỳ chọn: chỉ dùng cho tác vụ CLI/migration, không commit
-# SUPABASE_ACCESS_TOKEN="<personal-access-token>"
+VITE_BACKEND_URL="http://localhost:8000"
+# Tuỳ chọn: định danh dự án Supabase cho debug
+VITE_SUPABASE_PROJECT_ID="<your-project-ref>"
+# Tuỳ chọn: khoá dùng khi proxy (frontend không cần secret thật)
+VITE_SUPABASE_PROXY_KEY="frontend-proxy"
 ```
 
 Chạy chế độ phát triển:
@@ -57,7 +58,7 @@ npm run lint
 
 - Vite, React, TypeScript
 - Tailwind CSS, shadcn-ui
-- Supabase (Auth, DB)
+- Supabase (Auth, DB) thông qua backend FastAPI proxy
 
 ## Ghi chú bảo mật
 
