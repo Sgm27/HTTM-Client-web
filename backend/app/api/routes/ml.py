@@ -1,6 +1,7 @@
 from fastapi import APIRouter, File, Form, UploadFile
 
-from ...services.ocr import ocr_service, tts_service
+from ...services.ocr import ocr_service
+from ...services.tts import tts_service
 
 router = APIRouter()
 

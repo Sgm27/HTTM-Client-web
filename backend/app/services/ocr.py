@@ -3,20 +3,16 @@ from __future__ import annotations
 import io
 import os
 import sys
-import tempfile
 from typing import Optional
 
 from fastapi import HTTPException, UploadFile
-from fastapi.responses import FileResponse
 from PIL import Image
 
 WORKSPACE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OCR_DIR = os.path.join(WORKSPACE_ROOT, "OCR")
-TTS_DIR = os.path.join(WORKSPACE_ROOT, "TTS", "VietVoice-TTS")
 
-for path in (OCR_DIR, TTS_DIR):
-    if path not in sys.path:
-        sys.path.insert(0, path)
+if OCR_DIR not in sys.path:
+    sys.path.insert(0, OCR_DIR)
 
 try:  # pragma: no cover - optional dependencies
     import torch
@@ -34,12 +30,6 @@ try:  # pragma: no cover
     import vintern_1b as vintern  # type: ignore
 except Exception:  # pragma: no cover
     vintern = None  # type: ignore
-
-try:  # pragma: no cover
-    import vietvoice_tts as vietvoice  # type: ignore
-except Exception:  # pragma: no cover
-    vietvoice = None  # type: ignore
-
 
 class OCRService:
     def __init__(self) -> None:
@@ -113,37 +103,7 @@ class OCRService:
             raise HTTPException(status_code=500, detail=f"OCR inference failed: {exc}") from exc
 
         return {"answer": response}
-
-
-class TTSService:
-    async def synthesize(self, text: str, gender: str, area: str, emotion: str) -> FileResponse:
-        if vietvoice is None:  # pragma: no cover
-            raise HTTPException(status_code=503, detail="TTS module not available")
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            wav_path = os.path.join(tmpdir, "output.wav")
-            try:  # pragma: no cover
-                duration = vietvoice.synthesize_text_to_wav(
-                    text=text,
-                    out_file_path=wav_path,
-                    gender=gender,
-                    area=area,
-                    emotion=emotion,
-                )
-            except Exception as exc:  # pragma: no cover
-                raise HTTPException(status_code=500, detail=f"TTS synthesis failed: {exc}") from exc
-
-            headers = {"X-Audio-Duration": f"{duration:.2f}"}
-            return FileResponse(
-                wav_path,
-                media_type="audio/wav",
-                filename="speech.wav",
-                headers=headers,
-            )
-
-
 ocr_service = OCRService()
-tts_service = TTSService()
 
 
 def on_startup() -> None:

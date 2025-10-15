@@ -6,4 +6,6 @@ pydantic
 pillow
 transformers
 torch
+torchvision
+numpy
 python-multipart
