@@ -2,14 +2,20 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types.ts';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+const SUPABASE_PROXY_KEY = import.meta.env.VITE_SUPABASE_PROXY_KEY ?? 'frontend-proxy';
 const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+
+if (!BACKEND_URL) {
+  throw new Error('VITE_BACKEND_URL is not configured.');
+}
+
+const SUPABASE_URL = `${BACKEND_URL.replace(/\/$/, '')}/api/supabase`;
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PROXY_KEY, {
   auth: {
     storage: localStorage,
     persistSession: true,
@@ -20,10 +26,16 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
 // Dev-time check: verify project ref in URL matches expected
 (() => {
   try {
-    const expectedRef = SUPABASE_PROJECT_ID || new URL(SUPABASE_URL).host.split('.')[0];
-    const host = new URL(SUPABASE_URL).host; // e.g. opdchkkmyjaccbkkdycl.supabase.co
-    if (!host.startsWith(expectedRef + '.')) {
-      console.warn('[Supabase] Project ref mismatch. URL host =', host, 'expected to start with', expectedRef + '.');
+    const expectedRef = SUPABASE_PROJECT_ID;
+    if (!expectedRef) {
+      return;
     }
-  } catch {}
+    const backendHost = new URL(BACKEND_URL).host;
+    if (!backendHost) {
+      return;
+    }
+    if (!backendHost.includes(expectedRef)) {
+      console.warn('[Supabase Proxy] Backend host', backendHost, 'does not contain expected project id', expectedRef);
+    }
+  } catch { }
 })();
