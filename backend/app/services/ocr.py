@@ -36,12 +36,14 @@ class OCRService:
         self._ocr_model = None
         self._ocr_tokenizer = None
         self._ocr_device: Optional[str] = None
+        self._initialized = False
 
     def load(self) -> None:
-        if self._ocr_model is not None:
+        if self._initialized:
             return
+
         if AutoModel is None or AutoTokenizer is None or vintern is None or torch is None:
-            return
+            raise RuntimeError("Missing OCR dependencies")
 
         model_name = "5CD-AI/Vintern-1B-v3_5"
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -70,12 +72,19 @@ class OCRService:
 
         self._ocr_model = model
         self._ocr_tokenizer = tokenizer
+        self._initialized = True
 
     async def run(self, file: UploadFile, question: str) -> dict[str, str]:
-        if vintern is None or self._ocr_model is None or self._ocr_tokenizer is None or torch is None:
-            raise HTTPException(status_code=503, detail="OCR model not available")
+        try:
+            self.load()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
         image_bytes = await file.read()
+
+        if vintern is None or self._ocr_model is None or self._ocr_tokenizer is None or torch is None:
+            raise HTTPException(status_code=500, detail="OCR model not available")
+
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
         input_size = 448

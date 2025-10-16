@@ -20,6 +20,7 @@ lerna-debug.log*
 # Build outputs
 dist/
 dist-ssr/
+dist-test/
 *.local
 
 # Editor-specific rules files

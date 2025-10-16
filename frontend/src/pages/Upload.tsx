@@ -11,8 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Upload as UploadIcon, Loader2, FileText, BookOpen, Newspaper } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
-import { Tables } from "@/integrations/supabase/types";
 import { debugAuth, refreshSession } from "@/utils/auth-debug";
+import { submitUpload } from "./uploadService";
 
 const Upload = () => {
   const navigate = useNavigate();
@@ -111,116 +111,20 @@ const Upload = () => {
     setLoading(true);
 
     try {
-      let filePath = null;
-      let fileType = null;
-      let thumbnailUrl: string | null = null;
-
-      // Upload file if exists
-      if (file) {
-        const fileExt = file.name.split(".").pop();
-        const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from("uploads")
-          .upload(fileName, file);
-
-        if (uploadError) throw uploadError;
-        
-        filePath = fileName;
-        fileType = file.type;
-
-        // If uploaded file is an image and no explicit thumbnail chosen, use it as thumbnail
-        if (!thumbnail && fileType && fileType.startsWith("image/")) {
-          const { data: pub } = supabase.storage.from("uploads").getPublicUrl(fileName);
-          thumbnailUrl = pub?.publicUrl ?? null;
-        }
-      }
-
-      // Upload explicit thumbnail if provided
-      if (thumbnail) {
-        const ext = thumbnail.name.split('.').pop();
-        const thumbName = `${user.id}/thumb_${Date.now()}.${ext}`;
-        const { error: thumbErr } = await supabase.storage
-          .from('uploads')
-          .upload(thumbName, thumbnail);
-        if (thumbErr) throw thumbErr;
-        const { data: pub } = supabase.storage.from('uploads').getPublicUrl(thumbName);
-        thumbnailUrl = pub?.publicUrl ?? thumbnailUrl;
-      }
-
-      // Determine file type category for storage
-      const getFileTypeCategory = (mimeType: string): 'text' | 'docx' | 'pdf' | 'image' => {
-        if (mimeType === 'text/plain') return 'text';
-        if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
-        if (mimeType === 'application/pdf') return 'pdf';
-        if (mimeType.startsWith('image/')) return 'image';
-        return 'text';
-      };
-
-      // Insert story/content
-      const { data: storyData, error: storyError } = await supabase
-        .from("stories")
-        .insert({
-          title,
-          description,
-          content: content || "Nội dung sẽ được trích xuất từ file đã tải lên",
-          author_id: user.id,
-          content_type: contentType,
-          status: 'draft', // Will be changed to published after processing
-          is_public: isPublic,
-          file_path: filePath,
-          file_type: fileType,
-          thumbnail_url: thumbnailUrl,
-        })
-        .select()
-        .single();
-
-      if (storyError) throw storyError;
-
-      // Insert file record if file was uploaded
-      if (file && filePath) {
-        const { error: fileError } = await supabase.from("files").insert({
-          content_id: storyData.id,
-          file_name: file.name,
-          file_path: filePath,
-          file_size: file.size,
-          file_type: getFileTypeCategory(file.type),
-          mime_type: file.type,
-        });
-
-        if (fileError) {
-          console.error('Error inserting file record:', fileError);
-        }
-      }
-
-      // Create extracted text record for processing
-      const { error: extractedTextError } = await supabase.from("extracted_texts").insert({
-        content_id: storyData.id,
-        original_text: content,
-        processing_status: file ? 'pending' : 'completed',
-        extracted_text: file ? null : content,
+      const result = await submitUpload({
+        supabase,
+        user,
+        title,
+        description,
+        content,
+        contentType,
+        isPublic,
+        file,
+        thumbnail,
       });
-
-      if (extractedTextError) {
-        console.error('Error creating extracted text record:', extractedTextError);
-      }
-
-      // Track upload for processing pipeline
-      const { error: uploadError } = await supabase.from("uploads").insert({
-        story_id: storyData.id,
-        user_id: user.id,
-        original_file_path: filePath,
-        original_mime: fileType,
-        processing_status: file ? "pending" : "completed",
-        extracted_text: file ? null : content,
-      });
-
-      if (uploadError) {
-        console.error('Error creating upload record:', uploadError);
-      }
 
       toast.success(`Đăng ${contentType === 'story' ? 'truyện' : 'bài báo'} thành công!`);
-      navigate(`/story/${storyData.id}`);
+      navigate(`/story/${result.story.id}`);
     } catch (error: any) {
       console.error('Upload error:', error);
       toast.error(error.message || "Không thể đăng nội dung");

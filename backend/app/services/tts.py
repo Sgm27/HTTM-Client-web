@@ -23,22 +23,21 @@ except Exception:  # pragma: no cover
 
 class TTSService:
     def __init__(self) -> None:
-        self._vietvoice = vietvoice  # type: ignore[assignment]
-
-    def _ensure_backend(self) -> None:
-        if self._vietvoice is None:  # pragma: no cover
-            raise HTTPException(status_code=503, detail="TTS module not available")
+        if vietvoice is not None and hasattr(vietvoice, "synthesize_text_to_wav"):
+            self._backend = vietvoice  # type: ignore[assignment]
+        else:
+            self._backend = None
 
     async def synthesize(self, text: str, gender: str, area: str, emotion: str) -> FileResponse:
-        self._ensure_backend()
-        assert self._vietvoice is not None  # for type-checkers
+        if self._backend is None:
+            raise HTTPException(status_code=500, detail="VietVoice TTS backend is unavailable")
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
             wav_path = tmp_file.name
 
         try:  # pragma: no cover - heavy inference
             duration = float(
-                self._vietvoice.synthesize_text_to_wav(  # type: ignore[operator]
+                self._backend.synthesize_text_to_wav(  # type: ignore[operator]
                     text=text,
                     out_file_path=wav_path,
                     gender=gender,
