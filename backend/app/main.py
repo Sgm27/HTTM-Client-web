@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api.routes import health, ml, supabase_proxy
 from .core.config import get_settings
-from .services.ocr import on_startup as ocr_startup
 from .services.supabase_proxy import shutdown_supabase_proxy
 
 
@@ -34,9 +33,12 @@ def create_app() -> FastAPI:
     app.include_router(ml.router, prefix=api_prefix)
     app.include_router(supabase_proxy.router, prefix=api_prefix)
 
-    @app.on_event("startup")
-    async def startup_event() -> None:  # pragma: no cover - heavy dependencies
-        ocr_startup()
+    if settings.ocr_service_enabled:
+        from .services.ocr import on_startup as ocr_startup
+
+        @app.on_event("startup")
+        async def startup_event() -> None:  # pragma: no cover - heavy dependencies
+            ocr_startup()
 
     @app.on_event("shutdown")
     async def shutdown_event() -> None:  # pragma: no cover
