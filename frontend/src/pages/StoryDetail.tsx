@@ -8,11 +8,13 @@ import { Card as UICard } from "@/components/ui/card";
 import { Card } from "@/components/ui/card";
 import { ArrowLeft, Clock, Eye, Volume2, VolumeX, BookOpen, Newspaper, Pause, Play, Heart, Bookmark, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
+import { synthesizeSpeech } from "@/utils/tts";
 
 interface StoryData {
   id: string;
   title: string;
   description: string | null;
+  content: string | null;
   content_type: string;
   cover_image_url: string | null;
   view_count: number;
@@ -23,11 +25,14 @@ interface StoryData {
   } | null;
 }
 
+type AudioSource = "supabase" | "generated" | "demo";
+
 interface AudioData {
-  id: string;
+  id?: string;
   audio_url: string;
-  generation_status: string;
+  generation_status?: string;
   audio_duration: number | null;
+  source: AudioSource;
 }
 
 interface ExtractedText {
@@ -58,6 +63,7 @@ const StoryDetail = () => {
   const [newComment, setNewComment] = useState("");
   const listenSessionStartRef = useRef<number | null>(null);
   const progressTimerRef = useRef<number | null>(null);
+  const generatedAudioUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -73,6 +79,15 @@ const StoryDetail = () => {
       audio.pause();
     };
   }, [audio]);
+
+  useEffect(() => {
+    return () => {
+      if (generatedAudioUrlRef.current) {
+        URL.revokeObjectURL(generatedAudioUrlRef.current);
+        generatedAudioUrlRef.current = null;
+      }
+    };
+  }, []);
 
   const fetchStory = async () => {
     try {
@@ -118,13 +133,52 @@ const StoryDetail = () => {
         .maybeSingle();
 
       const demoUrl = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+      let selectedAudio: AudioData;
+
       if (audioData) {
-        setAudioData(audioData);
+        selectedAudio = { ...audioData, source: "supabase" };
         audio.src = audioData.audio_url;
+        if (audioData.audio_duration != null) {
+          setDuration(Math.floor(audioData.audio_duration));
+        }
       } else {
-        // Demo audio when no generated audio exists yet
-        audio.src = demoUrl;
+        const textForTts = textData?.extracted_text || storyData.content || storyData.description || storyData.title;
+        let generatedAudio: AudioData | undefined;
+
+        if (textForTts) {
+          try {
+            const { blob, duration: generatedDuration } = await synthesizeSpeech(textForTts);
+            const objectUrl = URL.createObjectURL(blob);
+            if (generatedAudioUrlRef.current) {
+              URL.revokeObjectURL(generatedAudioUrlRef.current);
+            }
+            generatedAudioUrlRef.current = objectUrl;
+            generatedAudio = {
+              audio_url: objectUrl,
+              audio_duration: generatedDuration ?? null,
+              source: "generated",
+            };
+            audio.src = objectUrl;
+            if (generatedDuration != null && Number.isFinite(generatedDuration)) {
+              setDuration(Math.floor(generatedDuration));
+            }
+          } catch (error) {
+            console.error("Failed to synthesize audio:", error);
+            toast.warning("Không thể tạo audio tự động, sử dụng audio demo tạm thời");
+          }
+        }
+
+        selectedAudio = generatedAudio ?? {
+          audio_url: demoUrl,
+          audio_duration: null,
+          source: "demo",
+        };
+        if (selectedAudio.source === "demo") {
+          audio.src = demoUrl;
+        }
       }
+
+      setAudioData(selectedAudio);
       audio.onended = () => setIsPlaying(false);
       audio.onloadedmetadata = () => setDuration(Math.floor(audio.duration || 0));
       audio.ontimeupdate = () => setPosition(Math.floor(audio.currentTime || 0));
@@ -545,10 +599,15 @@ const StoryDetail = () => {
                       Nghe Audio
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      {audioData.audio_duration 
+                      {audioData.audio_duration
                         ? `Thời lượng: ${Math.ceil(audioData.audio_duration / 60)} phút`
                         : "Nghe nội dung dưới dạng audio"
                       }
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {audioData.source === "generated" && "Audio được tạo trực tiếp từ mô hình TTS mới."}
+                      {audioData.source === "demo" && "Audio demo tạm thời khi chưa có bản chính thức."}
+                      {audioData.source === "supabase" && "Audio đã được tạo và lưu trữ sẵn."}
                     </p>
                   </div>
                   <Button
