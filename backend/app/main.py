@@ -33,12 +33,24 @@ def create_app() -> FastAPI:
     app.include_router(ml.router, prefix=api_prefix)
     app.include_router(supabase_proxy.router, prefix=api_prefix)
 
+    startup_callbacks = []
+
     if settings.ocr_service_enabled:
         from .services.ocr import on_startup as ocr_startup
 
+        startup_callbacks.append(ocr_startup)
+
+    if settings.tts_service_enabled:
+        from .services.tts import on_startup as tts_startup
+
+        startup_callbacks.append(tts_startup)
+
+    if startup_callbacks:
+
         @app.on_event("startup")
         async def startup_event() -> None:  # pragma: no cover - heavy dependencies
-            ocr_startup()
+            for callback in startup_callbacks:
+                callback()
 
     @app.on_event("shutdown")
     async def shutdown_event() -> None:  # pragma: no cover

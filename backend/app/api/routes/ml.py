@@ -36,10 +36,7 @@ async def run_ocr(
 async def run_tts(
     _: None = Depends(_require_tts_enabled),
     text: str = Form(...),
-    gender: str = Form("female"),
-    area: str = Form("northern"),
-    emotion: str = Form("neutral"),
 ):
     from ...services.tts import tts_service
 
-    return await tts_service.synthesize(text, gender, area, emotion)
+    return await tts_service.synthesize(text)
