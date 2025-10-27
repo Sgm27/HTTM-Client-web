@@ -6,44 +6,79 @@ import { createMockSupabaseClient } from './mockClient';
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 const SUPABASE_PROXY_KEY = import.meta.env.VITE_SUPABASE_PROXY_KEY ?? 'frontend-proxy';
 const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+const DIRECT_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const DIRECT_SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-const shouldUseMock = !BACKEND_URL || BACKEND_URL === 'mock';
+const isProxyConfigured = Boolean(BACKEND_URL && BACKEND_URL !== 'mock');
+const isDirectConfigured = Boolean(DIRECT_SUPABASE_URL && DIRECT_SUPABASE_ANON_KEY);
+const shouldUseMock = !isProxyConfigured && !isDirectConfigured;
 
-const SUPABASE_URL = shouldUseMock
-  ? null
-  : `${BACKEND_URL.replace(/\/$/, '')}/api/supabase`;
+const PROXIED_SUPABASE_URL = isProxyConfigured
+  ? `${BACKEND_URL!.replace(/\/$/, '')}/api/supabase`
+  : null;
+const DIRECT_SUPABASE_CREDENTIALS = isDirectConfigured
+  ? { url: DIRECT_SUPABASE_URL!, key: DIRECT_SUPABASE_ANON_KEY! }
+  : null;
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = shouldUseMock
-  ? createMockSupabaseClient()
-  : createClient<Database>(SUPABASE_URL!, SUPABASE_PROXY_KEY, {
+const createSupabaseClient = () => {
+  if (shouldUseMock) {
+    return createMockSupabaseClient();
+  }
+
+  if (isProxyConfigured && PROXIED_SUPABASE_URL) {
+    return createClient<Database>(PROXIED_SUPABASE_URL, SUPABASE_PROXY_KEY, {
       auth: {
         storage: localStorage,
         persistSession: true,
         autoRefreshToken: true,
       }
     });
+  }
+
+  if (DIRECT_SUPABASE_CREDENTIALS) {
+    return createClient<Database>(DIRECT_SUPABASE_CREDENTIALS.url, DIRECT_SUPABASE_CREDENTIALS.key, {
+      auth: {
+        storage: localStorage,
+        persistSession: true,
+        autoRefreshToken: true,
+      }
+    });
+  }
+
+  return createMockSupabaseClient();
+};
+
+export const supabase = createSupabaseClient();
 
 // Dev-time check: verify project ref in URL matches expected
 (() => {
   if (shouldUseMock) {
-    console.warn('[Supabase Proxy] Falling back to mock Supabase client. Configure VITE_BACKEND_URL to use real backend.');
+    console.warn('[Supabase] Falling back to mock Supabase client. Configure proxy or direct credentials.');
     return;
   }
 
   try {
     const expectedRef = SUPABASE_PROJECT_ID;
-    if (!expectedRef || !BACKEND_URL) {
+    if (!expectedRef) {
       return;
     }
-    const backendHost = new URL(BACKEND_URL).host;
-    if (!backendHost) {
+
+    if (isProxyConfigured && BACKEND_URL) {
+      const backendHost = new URL(BACKEND_URL).host;
+      if (backendHost && !backendHost.includes(expectedRef)) {
+        console.warn('[Supabase Proxy] Backend host', backendHost, 'does not contain expected project id', expectedRef);
+      }
       return;
     }
-    if (!backendHost.includes(expectedRef)) {
-      console.warn('[Supabase Proxy] Backend host', backendHost, 'does not contain expected project id', expectedRef);
+
+    if (DIRECT_SUPABASE_CREDENTIALS) {
+      const directHost = new URL(DIRECT_SUPABASE_CREDENTIALS.url).host;
+      if (directHost && !directHost.includes(expectedRef)) {
+        console.warn('[Supabase Direct] Supabase host', directHost, 'does not contain expected project id', expectedRef);
+      }
     }
   } catch { }
 })();
