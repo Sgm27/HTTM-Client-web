@@ -20,12 +20,21 @@ npm install
 Tạo file `.env` (đã được ignore) trong thư mục gốc với nội dung tương tự:
 
 ```sh
+# Dùng backend proxy FastAPI (khuyến nghị nếu backend đã cấu hình Service Role)
 VITE_BACKEND_URL="http://localhost:8000"
-# Tuỳ chọn: định danh dự án Supabase cho debug
-VITE_SUPABASE_PROJECT_ID="<your-project-ref>"
 # Tuỳ chọn: khoá dùng khi proxy (frontend không cần secret thật)
 VITE_SUPABASE_PROXY_KEY="frontend-proxy"
+
+# --- Hoặc ---
+# Kết nối trực tiếp đến Supabase nếu không chạy backend proxy
+VITE_SUPABASE_URL="https://<project-ref>.supabase.co"
+VITE_SUPABASE_ANON_KEY="<your-anon-key>"
+
+# Tuỳ chọn: định danh dự án Supabase cho debug (dùng cho cả hai chế độ)
+VITE_SUPABASE_PROJECT_ID="<your-project-ref>"
 ```
+
+> Lưu ý: Nếu thiết lập cả `VITE_BACKEND_URL` và cặp `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` thì frontend sẽ ưu tiên sử dụng backend proxy.
 
 Chạy chế độ phát triển:
 
