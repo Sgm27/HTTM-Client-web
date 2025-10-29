@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # Start backend
-(cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000) &
+(cd server && uvicorn src.main:app --reload --host 0.0.0.0 --port 8000) &
 
 # Start frontend
-(cd frontend && npm run dev -- --host 0.0.0.0 --port 5173) &
+(cd client && npm run dev -- --host 0.0.0.0 --port 5173) &
 
 # Wait for both
 wait
