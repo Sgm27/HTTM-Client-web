@@ -112,8 +112,11 @@ class OCRService:
             raise HTTPException(status_code=500, detail=f"OCR inference failed: {exc}") from exc
 
         return {"answer": response}
+
+
 ocr_service = OCRService()
 
 
 def on_startup() -> None:
+    """Load OCR service on startup - only called when OCR_SERVICE is enabled"""
     ocr_service.load()

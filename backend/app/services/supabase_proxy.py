@@ -12,7 +12,12 @@ from ..core.config import Settings, get_settings
 class SupabaseProxyService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._client = httpx.AsyncClient(base_url=str(settings.supabase_url), timeout=60.0)
+        # Disable automatic decompression to handle content-encoding properly
+        self._client = httpx.AsyncClient(
+            base_url=str(settings.supabase_url), 
+            timeout=60.0,
+            # Let httpx handle decompression automatically
+        )
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -28,9 +33,15 @@ class SupabaseProxyService:
                 continue
             headers[key] = value
 
-        headers["apikey"] = self._settings.supabase_service_role_key
-        if not any(h.lower() == "authorization" and headers[h] for h in headers):
-            headers["Authorization"] = f"Bearer {self._settings.supabase_service_role_key}"
+        # Always set apikey header with anon key
+        # This is required by Supabase for all requests
+        anon_key = self._settings.supabase_anon_key or self._settings.supabase_service_role_key
+        headers["apikey"] = anon_key
+        
+        # Only set Authorization if client didn't provide one
+        # If client provides Authorization header, it contains the user's JWT token
+        if not any(h.lower() == "authorization" for h in headers):
+            headers["Authorization"] = f"Bearer {anon_key}"
 
         try:
             upstream_response = await self._client.request(
@@ -44,10 +55,17 @@ class SupabaseProxyService:
         except httpx.HTTPError as exc:  # pragma: no cover - network errors
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+        # Filter out headers that should not be forwarded
+        # Important: Remove content-encoding since httpx already decompressed the content
         filtered_headers = {
             key: value
             for key, value in upstream_response.headers.items()
-            if key.lower() not in {"content-length", "transfer-encoding", "connection"}
+            if key.lower() not in {
+                "content-length", 
+                "transfer-encoding", 
+                "connection",
+                "content-encoding",  # Remove encoding header since content is decompressed
+            }
         }
 
         return Response(

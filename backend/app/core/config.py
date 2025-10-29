@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass, field
 from functools import lru_cache
+from pathlib import Path
 from typing import List, Optional
 
 try:  # pragma: no cover - prefer modern pydantic if available
@@ -11,6 +12,22 @@ except Exception:  # pragma: no cover
     Field = None  # type: ignore
     field_validator = None  # type: ignore
     BaseSettings = None  # type: ignore
+
+
+def _load_env_file() -> None:
+    """Load .env file manually for dataclass fallback"""
+    env_file = Path(__file__).parent.parent.parent / ".env"
+    if env_file.exists():
+        with open(env_file, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, value = line.split("=", 1)
+                    key = key.strip()
+                    value = value.strip()
+                    # Only set if not already in environment
+                    if key and key not in os.environ:
+                        os.environ[key] = value
 
 
 def _split_cors(value: str | List[str] | None) -> List[str]:
@@ -25,7 +42,9 @@ def _env_bool(name: str, default: bool) -> bool:
     value = os.getenv(name)
     if value is None:
         return default
-    return value.strip().lower() not in {"false", "0", "no", "off"}
+    # Convert to lowercase and remove quotes for comparison
+    normalized = value.strip().strip('"').strip("'").lower()
+    return normalized not in {"false", "0", "no", "off", ""}
 
 
 if BaseSettings is not None and Field is not None and field_validator is not None:
@@ -64,6 +83,11 @@ else:
         supabase_url: AnyHttpUrl = field(default_factory=lambda: os.getenv("SUPABASE_URL", "http://localhost:54321"))
         supabase_service_role_key: str = field(default_factory=lambda: os.getenv("SUPABASE_SERVICE_ROLE_KEY", "local-service-role"))
         supabase_anon_key: Optional[str] = field(default_factory=lambda: os.getenv("SUPABASE_ANON_KEY"))
+
+
+# Load .env file for dataclass fallback
+if BaseSettings is None:
+    _load_env_file()
 
 
 @lru_cache()
