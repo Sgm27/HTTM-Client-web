@@ -53,6 +53,9 @@ downloads/
 eggs/
 .eggs/
 lib/
+# Allow frontend client src lib directory to be tracked
+!client/src/lib/
+!client/src/lib/**
 lib64/
 parts/
 sdist/
