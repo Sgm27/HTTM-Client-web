@@ -5,5 +5,7 @@ python-multipart
 pillow
 numpy
 transformers
-# Install an appropriate torch build for your platform (CPU/GPU)
 torch
+hf-xet
+supabase
+python-dotenv

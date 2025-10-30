@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api.routes import health, ml, supabase_proxy
+from .api.routes import health, ml, supabase_proxy, stories, uploads, ocr
 from .utils.config import get_settings
 from .services.supabase_proxy import shutdown_supabase_proxy
 
@@ -31,6 +31,9 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router, prefix=api_prefix)
     app.include_router(ml.router, prefix=api_prefix)
+    app.include_router(stories.router, prefix=api_prefix)
+    app.include_router(uploads.router, prefix=api_prefix)
+    app.include_router(ocr.router, prefix=api_prefix)
     app.include_router(supabase_proxy.router, prefix=api_prefix)
 
     startup_callbacks = []

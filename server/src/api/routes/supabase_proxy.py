@@ -8,7 +8,6 @@ router = APIRouter()
 @router.api_route(
     "/supabase/{path:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    operation_id="proxy_supabase_request",
 )
 async def proxy_supabase(
     path: str,

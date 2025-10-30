@@ -16,7 +16,7 @@ from pathlib import Path
 # Add parent directory to path to import tts service
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from app.services.tts import TTSService
+from src.services.tts import TTSService
 
 
 class TTSServiceTester:
