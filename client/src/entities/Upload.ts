@@ -9,6 +9,8 @@ export class Upload {
   description?: string;
   contentFileId!: string;
   thumbnailFileId?: string;
+  contentUrl?: string | null;
+  thumbnailUrl?: string | null;
   status!: StoryStatus;
   progress?: number;
   content?: string;  // Extracted text content

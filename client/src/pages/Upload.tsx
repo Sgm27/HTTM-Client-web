@@ -213,6 +213,16 @@ const Upload = () => {
 
           {upload && (
             <div className="space-y-4">
+              {upload.thumbnailUrl && (
+                <div className="flex flex-col items-start space-y-2">
+                  <p className="text-sm text-muted-foreground">Thumbnail d� t?i l�n</p>
+                  <img
+                    src={upload.thumbnailUrl}
+                    alt="Uploaded thumbnail preview"
+                    className="h-48 w-48 rounded-md border object-cover"
+                  />
+                </div>
+              )}
               <ProgressBar
                 progress={ocrProgress}
                 statusLabel={

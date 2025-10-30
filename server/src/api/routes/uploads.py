@@ -1,7 +1,27 @@
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
-from typing import Optional
+from typing import Optional, Any
+from urllib.parse import quote
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
+
+
+def _build_public_url(base_url: str, bucket: str, path: str) -> str:
+    normalized = path.lstrip("/")
+    encoded = quote(normalized, safe="/")
+    return f"{base_url.rstrip('/')}/storage/v1/object/public/{bucket}/{encoded}"
+
+
+def _extract_public_url(result: Any, fallback: str) -> str:
+    if isinstance(result, dict):
+        data = result.get("data")
+        if isinstance(data, dict):
+            url = data.get("publicUrl") or data.get("publicURL")
+            if url:
+                return url
+        url = result.get("publicUrl") or result.get("publicURL")
+        if url:
+            return url
+    return fallback
 
 
 @router.post("", response_model=None)
@@ -38,10 +58,14 @@ async def create_upload(
             content_data,
             {"content-type": contentFile.content_type or "application/octet-stream"}
         )
-        
+
         # Get public URL for content file
-        content_url = supabase.storage.from_("uploads").get_public_url(content_filename)
-        
+        content_public = supabase.storage.from_("uploads").get_public_url(content_filename)
+        content_url = _extract_public_url(
+            content_public,
+            _build_public_url(str(settings.supabase_url), "uploads", content_filename),
+        )
+
         # Upload thumbnail if provided
         thumbnail_url = None
         if thumbnailFile:
@@ -51,7 +75,11 @@ async def create_upload(
                 thumbnail_data,
                 {"content-type": thumbnailFile.content_type or "image/jpeg"}
             )
-            thumbnail_url = supabase.storage.from_("uploads").get_public_url(thumbnail_filename)
+            thumbnail_public = supabase.storage.from_("uploads").get_public_url(thumbnail_filename)
+            thumbnail_url = _extract_public_url(
+                thumbnail_public,
+                _build_public_url(str(settings.supabase_url), "uploads", thumbnail_filename),
+            )
         
         # Determine status based on file type and OCR service
         # For text files (.txt), we can read content directly without OCR
@@ -129,8 +157,10 @@ async def create_upload(
             "errorReason": upload_record.get("error_reason"),
             "createdAt": upload_record.get("created_at"),
             "updatedAt": upload_record.get("updated_at"),
+            "contentUrl": content_url,
+            "thumbnailUrl": thumbnail_url,
         }
-        
+
         return {"upload": transformed}
         
     except Exception as e:
@@ -154,7 +184,7 @@ async def get_upload(upload_id: str):
             settings.supabase_url,
             settings.supabase_anon_key
         )
-        
+
         response = supabase.table("uploads").select("*").eq("id", upload_id).execute()
         
         if not response.data or len(response.data) == 0:
@@ -165,6 +195,24 @@ async def get_upload(upload_id: str):
         
         # Transform snake_case to camelCase for frontend
         upload_record = response.data[0]
+        thumbnail_file_id = upload_record.get("thumbnail_file_id")
+        thumbnail_url = None
+        if thumbnail_file_id:
+            thumbnail_public = supabase.storage.from_("uploads").get_public_url(thumbnail_file_id)
+            thumbnail_url = _extract_public_url(
+                thumbnail_public,
+                _build_public_url(str(settings.supabase_url), "uploads", thumbnail_file_id),
+            )
+
+        content_file_id = upload_record.get("content_file_id")
+        content_url = None
+        if content_file_id:
+            content_public = supabase.storage.from_("uploads").get_public_url(content_file_id)
+            content_url = _extract_public_url(
+                content_public,
+                _build_public_url(str(settings.supabase_url), "uploads", content_file_id),
+            )
+
         transformed = {
             "id": upload_record.get("id"),
             "userId": upload_record.get("user_id"),
@@ -180,8 +228,10 @@ async def get_upload(upload_id: str):
             "errorReason": upload_record.get("error_reason"),
             "createdAt": upload_record.get("created_at"),
             "updatedAt": upload_record.get("updated_at"),
+            "contentUrl": content_url,
+            "thumbnailUrl": thumbnail_url,
         }
-        
+
         return transformed
         
     except Exception as e:
