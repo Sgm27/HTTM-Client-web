@@ -14,6 +14,7 @@ export const storySchema = z.object({
   title: z.string(),
   content: z.string(),
   audioUrl: z.string().url().optional().nullable(),
+  audioStatus: z.string().optional().nullable(),
   status: z.nativeEnum(StoryStatus),
   views: z.number(),
   createdAt: z.string(),

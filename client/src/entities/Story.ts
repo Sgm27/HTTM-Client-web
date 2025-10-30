@@ -6,6 +6,7 @@ export class Story {
   title!: string;
   content!: string;
   audioUrl?: string;
+  audioStatus?: string | null;
   status!: StoryStatus;
   views!: number;
   createdAt!: Date;

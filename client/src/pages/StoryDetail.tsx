@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Header from '@/components/Header';
 import { Story, Comment, StoryStatus } from '@/entities';
-import { AudioPlayer, ActionBar, CommentList } from '@/components/story';
-import { getStory, generateStoryAudio } from '@/lib/api/uploadApi';
-import { TTSOption } from '@/dtos';
+import { AudioPlayer, CommentList } from '@/components/story';
+import { getStory } from '@/lib/api/uploadApi';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Loader2, ArrowLeft, Eye } from 'lucide-react';
@@ -13,7 +12,6 @@ const StoryDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [story, setStory] = useState<Story | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | undefined>();
   const [comments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -24,7 +22,6 @@ const StoryDetail = () => {
       try {
         const data = await getStory(id);
         setStory(data);
-        setAudioUrl(data.audioUrl);
       } catch (error) {
         console.error('Failed to load story', error);
         toast.error('Không thể tải nội dung truyện');
@@ -35,29 +32,6 @@ const StoryDetail = () => {
 
     void loadStory();
   }, [id]);
-
-  const handleGenerateAudio = async (option: TTSOption) => {
-    if (!story) return;
-    try {
-      const result = await generateStoryAudio(story.id, option);
-      setAudioUrl(result.audioUrl);
-      toast.success('Đã tạo audio cho truyện');
-    } catch (error) {
-      console.error('Generate audio error', error);
-      toast.error('Không thể tạo audio');
-    }
-  };
-
-  const handlePublish = async () => {
-    if (!story) return;
-    setStory((prev) => {
-      if (!prev) return prev;
-      const updated = new Story({ ...prev });
-      updated.publish();
-      return updated;
-    });
-    toast.success('Đã cập nhật trạng thái truyện');
-  };
 
   if (loading) {
     return (
@@ -86,6 +60,12 @@ const StoryDetail = () => {
     );
   }
 
+  const audioMessage = !story.audioUrl
+    ? story.audioStatus === 'failed'
+      ? 'Không thể tạo audio cho truyện. Vui lòng thử lại sau.'
+      : 'Audio đang được xử lý, vui lòng quay lại sau ít phút.'
+    : undefined;
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -111,12 +91,10 @@ const StoryDetail = () => {
 
         <section className="space-y-4">
           <h2 className="text-2xl font-semibold">Audio</h2>
-          <AudioPlayer src={audioUrl} />
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-2xl font-semibold">Hành động</h2>
-          <ActionBar onGenerateAudio={handleGenerateAudio} onPublish={handlePublish} disabled={!story} />
+          <AudioPlayer src={story.audioUrl ?? undefined} emptyMessage={audioMessage} />
+          {story.audioStatus === 'failed' && (
+            <p className="text-sm text-destructive">Hệ thống chưa thể tạo audio cho truyện này.</p>
+          )}
         </section>
 
         <section className="space-y-4">
