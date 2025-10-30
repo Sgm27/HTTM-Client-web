@@ -120,7 +120,8 @@ async def create_story(request: CreateStoryRequest):
         
         extracted_text = upload_data.get("extracted_text", "") or ""
         has_content = bool(extracted_text.strip())
-        initial_audio_status = "processing" if settings.tts_service_enabled and has_content else "pending"
+        # Always start with 'PENDING' (uppercase) to match database constraint
+        initial_audio_status = "PENDING"
 
         # Create story from upload data
         story_insert = {
@@ -150,7 +151,7 @@ async def create_story(request: CreateStoryRequest):
         if settings.tts_service_enabled and story_content.strip():
             from ...services.tts import tts_service
 
-            supabase.table("stories").update({"audio_status": "processing"}).eq("id", story_data.get("id")).execute()
+            supabase.table("stories").update({"audio_status": "PROCESSING"}).eq("id", story_data.get("id")).execute()
             try:
                 audio_bytes, _ = await tts_service.synthesize_bytes(story_content)
                 audio_filename = f"{story_data.get('author_id', 'public')}/{uuid4()}.wav"
@@ -162,13 +163,13 @@ async def create_story(request: CreateStoryRequest):
                 audio_url = supabase.storage.from_("audio-files").get_public_url(audio_filename)
                 supabase.table("stories").update({
                     "audio_url": audio_url,
-                    "audio_status": "completed",
+                    "audio_status": "COMPLETED",
                 }).eq("id", story_data.get("id")).execute()
                 story_data["audio_url"] = audio_url
-                story_data["audio_status"] = "completed"
+                story_data["audio_status"] = "COMPLETED"
             except Exception:
-                supabase.table("stories").update({"audio_status": "failed"}).eq("id", story_data.get("id")).execute()
-                story_data["audio_status"] = "failed"
+                supabase.table("stories").update({"audio_status": "FAILED"}).eq("id", story_data.get("id")).execute()
+                story_data["audio_status"] = "FAILED"
         
         # Map content_type values - convert STORY to TEXT as fallback
         content_type_raw = story_data.get("content_type")
@@ -252,7 +253,7 @@ async def generate_audio(story_id: str, request: GenerateAudioRequest):
                 detail="Story content is empty",
             )
 
-        supabase.table("stories").update({"audio_status": "processing"}).eq("id", story_id).execute()
+        supabase.table("stories").update({"audio_status": "PROCESSING"}).eq("id", story_id).execute()
 
         from ...services.tts import tts_service
 
@@ -269,10 +270,10 @@ async def generate_audio(story_id: str, request: GenerateAudioRequest):
             audio_url = supabase.storage.from_("audio-files").get_public_url(audio_filename)
             supabase.table("stories").update({
                 "audio_url": audio_url,
-                "audio_status": "completed",
+                "audio_status": "COMPLETED",
             }).eq("id", story_id).execute()
         except Exception as exc:
-            supabase.table("stories").update({"audio_status": "failed"}).eq("id", story_id).execute()
+            supabase.table("stories").update({"audio_status": "FAILED"}).eq("id", story_id).execute()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to generate audio: {str(exc)}",
