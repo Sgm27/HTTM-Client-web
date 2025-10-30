@@ -27,12 +27,10 @@ async def get_ocr_progress(file_id: str):
         
         file_data = response.data[0]
         
-        # Return progress information
+        # Return progress information (transformed to match frontend schema)
         return {
-            "fileId": file_id,
-            "status": file_data.get("status", "pending"),
             "progress": file_data.get("progress", 0),
-            "result": file_data.get("content"),
+            "text": file_data.get("content"),  # Map 'content' to 'text' for frontend
         }
         
     except Exception as e:

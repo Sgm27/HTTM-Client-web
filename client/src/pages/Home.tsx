@@ -14,8 +14,8 @@ interface Story {
   id: string;
   title: string;
   description: string;
-  content_type: 'story' | 'news' | null;
-  status: 'draft' | 'published' | 'rejected' | null;
+  content_type: 'TEXT' | 'COMIC' | 'NEWS' | 'story' | 'news' | null;  // Support both cases during migration
+  status: 'DRAFT' | 'PUBLISHED' | 'REJECTED' | 'draft' | 'published' | 'rejected' | null;  // Support both cases
   is_public: boolean | null;
   cover_image_url: string | null;
   thumbnail_url?: string | null;
@@ -92,12 +92,13 @@ const Home = () => {
           created_at,
           author_id
         `)
-        .eq('status', 'published')
+        .eq('status', 'PUBLISHED')  // Changed to uppercase
         .eq('is_public', true);
 
-      // Filter by content type
+      // Filter by content type - map to uppercase
       if (contentType !== "all") {
-        query.eq('content_type', contentType);
+        const mappedType = contentType === 'story' ? 'TEXT' : contentType === 'news' ? 'NEWS' : contentType.toUpperCase();
+        query.eq('content_type', mappedType);
       }
 
       // Search functionality
@@ -376,7 +377,7 @@ const Home = () => {
                       )}
                     </div>
                     <div className="flex items-center">
-                      {story.content_type === 'story' ? (
+                      {(story.content_type === 'story' || story.content_type === 'TEXT') ? (
                         <div className="flex items-center text-blue-600">
                           <BookOpen className="w-3 h-3 mr-1" />
                           Truyện

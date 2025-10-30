@@ -68,7 +68,8 @@ export const supabase = createSupabaseClient();
 
     if (isProxyConfigured && BACKEND_URL) {
       const backendHost = new URL(BACKEND_URL).host;
-      if (backendHost && !backendHost.includes(expectedRef)) {
+      // Skip warning for localhost development
+      if (backendHost && !backendHost.includes('localhost') && !backendHost.includes('127.0.0.1') && !backendHost.includes(expectedRef)) {
         console.warn('[Supabase Proxy] Backend host', backendHost, 'does not contain expected project id', expectedRef);
       }
       return;

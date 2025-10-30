@@ -58,16 +58,9 @@ async def get_story(
         else:
             content_type = "TEXT"
         
-        # Handle visibility - must not be null
-        visibility_raw = story_data.get("visibility")
-        if visibility_raw:
-            visibility_upper = visibility_raw.upper()
-            if visibility_upper in ["PUBLIC", "PRIVATE", "UNLISTED"]:
-                visibility = visibility_upper
-            else:
-                visibility = "PUBLIC"  # Default fallback
-        else:
-            visibility = "PUBLIC"  # Default when null
+        # Handle visibility - map is_public boolean to visibility enum
+        is_public = story_data.get("is_public", True)
+        visibility = "PUBLIC" if is_public else "PRIVATE"
         
         # Transform snake_case to camelCase and normalize values
         transformed = {
@@ -105,14 +98,37 @@ async def create_story(request: CreateStoryRequest):
         settings = get_settings()
         supabase: Client = create_client(
             settings.supabase_url,
-            settings.supabase_anon_key
+            settings.supabase_service_role_key  # Use service role for server operations
         )
         
-        # Create story from upload
-        response = supabase.table("stories").insert({
+        # First, get the upload data
+        upload_response = supabase.table("uploads").select("*").eq("id", request.uploadId).execute()
+        
+        if not upload_response.data or len(upload_response.data) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Upload with id {request.uploadId} not found"
+            )
+        
+        upload_data = upload_response.data[0]
+        
+        # Map visibility to is_public boolean
+        visibility = upload_data.get("visibility", "PUBLIC")
+        is_public = visibility.upper() == "PUBLIC"
+        
+        # Create story from upload data
+        story_insert = {
             "upload_id": request.uploadId,
-            "status": "draft"
-        }).execute()
+            "title": upload_data.get("title", ""),
+            "description": upload_data.get("description"),
+            "content": upload_data.get("extracted_text", ""),
+            "author_id": upload_data.get("user_id"),
+            "content_type": upload_data.get("content_type", "TEXT"),
+            "is_public": is_public,
+            "status": "PUBLISHED"  # Mark as published when creating story
+        }
+        
+        response = supabase.table("stories").insert(story_insert).execute()
         
         if not response.data:
             raise HTTPException(
@@ -135,16 +151,9 @@ async def create_story(request: CreateStoryRequest):
         else:
             content_type = "TEXT"
         
-        # Handle visibility - must not be null
-        visibility_raw = story_data.get("visibility")
-        if visibility_raw:
-            visibility_upper = visibility_raw.upper()
-            if visibility_upper in ["PUBLIC", "PRIVATE", "UNLISTED"]:
-                visibility = visibility_upper
-            else:
-                visibility = "PUBLIC"
-        else:
-            visibility = "PUBLIC"
+        # Handle visibility - map is_public boolean to visibility enum
+        is_public = story_data.get("is_public", True)
+        visibility = "PUBLIC" if is_public else "PRIVATE"
         
         # Transform to camelCase
         transformed = {

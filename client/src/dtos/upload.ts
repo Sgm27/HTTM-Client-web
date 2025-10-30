@@ -32,6 +32,7 @@ export const uploadSchema = z.object({
   thumbnailFileId: z.string().nullable().optional(),
   status: z.nativeEnum(StoryStatus),
   progress: z.number().min(0).max(100).nullable().optional(),
+  content: z.string().nullable().optional(),  // Extracted text content
   errorReason: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),

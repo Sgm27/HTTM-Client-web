@@ -53,20 +53,56 @@ async def create_upload(
             )
             thumbnail_url = supabase.storage.from_("uploads").get_public_url(thumbnail_filename)
         
+        # Determine status based on file type and OCR service
+        # For text files (.txt), we can read content directly without OCR
+        file_extension = contentFile.filename.lower().split('.')[-1] if contentFile.filename else ''
+        text_extensions = ['txt', 'text']
+        image_extensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'pdf']
+        
+        initial_status = "DRAFT"
+        initial_progress = 0
+        extracted_content = None
+        
+        # If it's a plain text file, read content directly and mark as READY
+        if file_extension in text_extensions:
+            try:
+                # Decode text content
+                text_content = content_data.decode('utf-8')
+                extracted_content = text_content
+                initial_status = "READY"
+                initial_progress = 100
+            except Exception as e:
+                print(f"Error reading text file: {e}")
+                initial_status = "FAILED"
+                
+        # If it's an image and OCR is enabled, mark for OCR processing
+        elif file_extension in image_extensions and settings.ocr_service_enabled:
+            initial_status = "OCR_IN_PROGRESS"
+            initial_progress = 0
+            # TODO: Trigger OCR job here
+        # Otherwise keep as DRAFT
+        else:
+            initial_status = "DRAFT"
+            initial_progress = 0
+        
         # Create upload record in database
         upload_data = {
             "user_id": userId,
-            "content_type": contentType,
-            "visibility": visibility,
+            "content_type": contentType.upper(),  # Ensure uppercase to match enum
+            "visibility": visibility.upper(),  # Ensure uppercase to match enum
             "title": title,
             "description": description,
             "content_file_id": content_filename,  # Store file path/ID
             "thumbnail_file_id": thumbnail_filename,  # Store file path/ID
-            "status": "pending",
-            "progress": 0,
+            "status": initial_status,
+            "progress": initial_progress,
             "created_at": datetime.utcnow().isoformat(),
             "updated_at": datetime.utcnow().isoformat(),
         }
+        
+        # Add extracted content if available (using extracted_text column)
+        if extracted_content:
+            upload_data["extracted_text"] = extracted_content
         
         response = supabase.table("uploads").insert(upload_data).execute()
         
@@ -76,7 +112,26 @@ async def create_upload(
                 detail="Failed to create upload"
             )
         
-        return {"upload": response.data[0]}
+        # Transform snake_case to camelCase for frontend
+        upload_record = response.data[0]
+        transformed = {
+            "id": upload_record.get("id"),
+            "userId": upload_record.get("user_id"),
+            "contentType": upload_record.get("content_type"),
+            "visibility": upload_record.get("visibility"),
+            "title": upload_record.get("title"),
+            "description": upload_record.get("description"),
+            "contentFileId": upload_record.get("content_file_id"),
+            "thumbnailFileId": upload_record.get("thumbnail_file_id"),
+            "status": upload_record.get("status"),
+            "progress": upload_record.get("progress"),
+            "content": upload_record.get("extracted_text"),  # Map extracted_text to content
+            "errorReason": upload_record.get("error_reason"),
+            "createdAt": upload_record.get("created_at"),
+            "updatedAt": upload_record.get("updated_at"),
+        }
+        
+        return {"upload": transformed}
         
     except Exception as e:
         if isinstance(e, HTTPException):
@@ -108,7 +163,26 @@ async def get_upload(upload_id: str):
                 detail=f"Upload with id {upload_id} not found"
             )
         
-        return response.data[0]
+        # Transform snake_case to camelCase for frontend
+        upload_record = response.data[0]
+        transformed = {
+            "id": upload_record.get("id"),
+            "userId": upload_record.get("user_id"),
+            "contentType": upload_record.get("content_type"),
+            "visibility": upload_record.get("visibility"),
+            "title": upload_record.get("title"),
+            "description": upload_record.get("description"),
+            "contentFileId": upload_record.get("content_file_id"),
+            "thumbnailFileId": upload_record.get("thumbnail_file_id"),
+            "status": upload_record.get("status"),
+            "progress": upload_record.get("progress"),
+            "content": upload_record.get("extracted_text"),  # Map extracted_text to content
+            "errorReason": upload_record.get("error_reason"),
+            "createdAt": upload_record.get("created_at"),
+            "updatedAt": upload_record.get("updated_at"),
+        }
+        
+        return transformed
         
     except Exception as e:
         if isinstance(e, HTTPException):

@@ -66,8 +66,14 @@ const Upload = () => {
       }
     };
 
+    // Only poll if status is OCR_IN_PROGRESS
     if (upload?.status === StoryStatus.OCR_IN_PROGRESS && upload.contentFileId) {
       pollOcr();
+    }
+    // If status is READY and we have content from text file, set it directly
+    else if (upload?.status === StoryStatus.READY && upload.content) {
+      setOcrProgress(100);
+      setOcrText(upload.content);
     }
 
     return () => {

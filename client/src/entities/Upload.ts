@@ -11,6 +11,7 @@ export class Upload {
   thumbnailFileId?: string;
   status!: StoryStatus;
   progress?: number;
+  content?: string;  // Extracted text content
   errorReason?: string;
   createdAt!: Date;
   updatedAt!: Date;
