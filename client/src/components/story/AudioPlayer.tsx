@@ -108,49 +108,59 @@ export const AudioPlayer = ({ src, emptyMessage }: AudioPlayerProps) => {
   const sliderValue = duration > 0 ? currentTime : 0;
 
   return (
-    <div className="rounded-lg border p-4 space-y-3">
+    <div className="space-y-4">
       <audio ref={audioRef} src={src} preload="metadata" />
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
-          <div className="flex items-center gap-4">
-            <Button variant="outline" size="icon" onClick={togglePlayback} disabled={disabled}>
-              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            </Button>
-            <div className="flex-1">
-              <Slider
-                value={[sliderValue]}
-                max={sliderMax}
-                step={0.1}
-                onValueChange={handleSeek}
-                disabled={disabled || duration <= 0}
-              />
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-3 lg:w-auto">
-            <div className="text-xs sm:text-sm text-muted-foreground tabular-nums">
-              {formatTime(currentTime)} / {formatTime(duration)}
-            </div>
-            <div className="flex gap-2">
-              {SPEED_OPTIONS.map((option) => (
-                <Button
-                  key={option}
-                  size="sm"
-                  variant={speed === option ? 'default' : 'outline'}
-                  onClick={() => handleSpeedChange(option)}
-                  disabled={disabled}
-                >
-                  {option}x
-                </Button>
-              ))}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={togglePlayback}
+            disabled={disabled}
+            className="h-10 w-10 rounded-full border-border bg-background shadow-sm"
+          >
+            {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          </Button>
+          <div className="flex-1">
+            <Slider
+              value={[sliderValue]}
+              max={sliderMax}
+              step={0.1}
+              onValueChange={handleSeek}
+              disabled={disabled || duration <= 0}
+              className="cursor-pointer"
+            />
+            <div className="mt-2 flex justify-between text-xs font-medium text-muted-foreground tabular-nums">
+              <span>{formatTime(currentTime)}</span>
+              <span>{formatTime(duration)}</span>
             </div>
           </div>
         </div>
-        {disabled && (
-          <p className="text-sm text-muted-foreground">
-            {emptyMessage ?? 'Audio sẽ tự động xuất hiện sau khi xử lý xong.'}
-          </p>
-        )}
+        <div className="flex flex-col items-start gap-2 lg:items-end">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Tốc độ phát
+          </span>
+          <div className="flex gap-2">
+            {SPEED_OPTIONS.map((option) => (
+              <Button
+                key={option}
+                size="sm"
+                variant={speed === option ? 'default' : 'outline'}
+                className="rounded-full px-3"
+                onClick={() => handleSpeedChange(option)}
+                disabled={disabled}
+              >
+                {option}x
+              </Button>
+            ))}
+          </div>
+        </div>
       </div>
+      {disabled && (
+        <p className="text-sm text-muted-foreground">
+          {emptyMessage ?? 'Audio sẽ tự động xuất hiện sau khi xử lý xong.'}
+        </p>
+      )}
     </div>
   );
 };
