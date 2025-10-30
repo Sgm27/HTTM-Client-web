@@ -95,8 +95,8 @@ class TTSService:
             self._sampling_rate = int(getattr(model.config, "sampling_rate", self._sampling_rate))
             self._initialized = True
 
-    async def synthesize(self, text: str) -> FileResponse:
-        """Sinh tiếng nói và trả về FileResponse (.wav)."""
+    async def _synthesize_to_file(self, text: str) -> tuple[str, float]:
+        """Sinh tiếng nói và trả về đường dẫn file tạm thời cùng thời lượng."""
         if not text or not text.strip():
             raise HTTPException(status_code=400, detail="Text is required for synthesis")
 
@@ -161,9 +161,13 @@ class TTSService:
 
         # Offload inference + ghi file
         try:
-            wav_path, duration_seconds = await run_in_threadpool(_infer_and_write)
+            return await run_in_threadpool(_infer_and_write)
         except Exception as exc:  # pragma: no cover
             raise HTTPException(status_code=500, detail=f"TTS synthesis failed: {exc}") from exc
+
+    async def synthesize(self, text: str) -> FileResponse:
+        """Sinh tiếng nói và trả về FileResponse (.wav)."""
+        wav_path, duration_seconds = await self._synthesize_to_file(text)
 
         headers = {"X-Audio-Duration": f"{duration_seconds:.2f}"}
 
@@ -180,6 +184,19 @@ class TTSService:
             headers=headers,
             background=background,
         )
+
+    async def synthesize_bytes(self, text: str) -> tuple[bytes, float]:
+        """Sinh tiếng nói và trả về nội dung nhị phân cùng thời lượng."""
+        wav_path, duration_seconds = await self._synthesize_to_file(text)
+
+        try:
+            with open(wav_path, "rb") as wav_file:
+                data = wav_file.read()
+        finally:
+            with contextlib.suppress(OSError):
+                os.remove(wav_path)
+
+        return data, duration_seconds
 
 
 # ---- Public instance + startup helper (giữ API tương tự) ----

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from typing import Optional
+from uuid import uuid4
 
 router = APIRouter(prefix="/stories", tags=["stories"])
 
@@ -69,6 +70,7 @@ async def get_story(
             "title": story_data.get("title", ""),
             "content": story_data.get("content", ""),
             "audioUrl": story_data.get("audio_url"),
+            "audioStatus": story_data.get("audio_status"),
             "status": story_data.get("status", "draft").upper(),
             "views": story_data.get("views", 0),
             "createdAt": story_data.get("created_at", ""),
@@ -116,6 +118,10 @@ async def create_story(request: CreateStoryRequest):
         visibility = upload_data.get("visibility", "PUBLIC")
         is_public = visibility.upper() == "PUBLIC"
         
+        extracted_text = upload_data.get("extracted_text", "") or ""
+        has_content = bool(extracted_text.strip())
+        initial_audio_status = "processing" if settings.tts_service_enabled and has_content else "pending"
+
         # Create story from upload data
         story_insert = {
             "upload_id": request.uploadId,
@@ -125,11 +131,12 @@ async def create_story(request: CreateStoryRequest):
             "author_id": upload_data.get("user_id"),
             "content_type": upload_data.get("content_type", "TEXT"),
             "is_public": is_public,
-            "status": "PUBLISHED"  # Mark as published when creating story
+            "status": "PUBLISHED",  # Mark as published when creating story
+            "audio_status": initial_audio_status,
         }
-        
+
         response = supabase.table("stories").insert(story_insert).execute()
-        
+
         if not response.data:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -137,6 +144,31 @@ async def create_story(request: CreateStoryRequest):
             )
         
         story_data = response.data[0]
+
+        # Generate TTS audio automatically when possible
+        story_content = story_data.get("content", "") or ""
+        if settings.tts_service_enabled and story_content.strip():
+            from ...services.tts import tts_service
+
+            supabase.table("stories").update({"audio_status": "processing"}).eq("id", story_data.get("id")).execute()
+            try:
+                audio_bytes, _ = await tts_service.synthesize_bytes(story_content)
+                audio_filename = f"{story_data.get('author_id', 'public')}/{uuid4()}.wav"
+                supabase.storage.from_("audio-files").upload(
+                    audio_filename,
+                    audio_bytes,
+                    {"content-type": "audio/wav"},
+                )
+                audio_url = supabase.storage.from_("audio-files").get_public_url(audio_filename)
+                supabase.table("stories").update({
+                    "audio_url": audio_url,
+                    "audio_status": "completed",
+                }).eq("id", story_data.get("id")).execute()
+                story_data["audio_url"] = audio_url
+                story_data["audio_status"] = "completed"
+            except Exception:
+                supabase.table("stories").update({"audio_status": "failed"}).eq("id", story_data.get("id")).execute()
+                story_data["audio_status"] = "failed"
         
         # Map content_type values - convert STORY to TEXT as fallback
         content_type_raw = story_data.get("content_type")
@@ -162,6 +194,7 @@ async def create_story(request: CreateStoryRequest):
             "title": story_data.get("title", ""),
             "content": story_data.get("content", ""),
             "audioUrl": story_data.get("audio_url"),
+            "audioStatus": story_data.get("audio_status"),
             "status": story_data.get("status", "draft").upper(),
             "views": story_data.get("views", 0),
             "createdAt": story_data.get("created_at", ""),
@@ -191,7 +224,7 @@ async def generate_audio(story_id: str, request: GenerateAudioRequest):
         settings = get_settings()
         supabase: Client = create_client(
             settings.supabase_url,
-            settings.supabase_anon_key
+            settings.supabase_service_role_key
         )
         
         # Get the story first
@@ -212,20 +245,39 @@ async def generate_audio(story_id: str, request: GenerateAudioRequest):
                 detail="TTS service is disabled"
             )
         
-        # Generate audio using TTS service
+        story_content = story.get("content", "") or ""
+        if not story_content.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Story content is empty",
+            )
+
+        supabase.table("stories").update({"audio_status": "processing"}).eq("id", story_id).execute()
+
         from ...services.tts import tts_service
-        
-        audio_result = await tts_service.synthesize(story.get("content", ""))
-        
-        # Update story with audio URL
-        # In a real implementation, you'd upload the audio and get a URL
-        audio_url = audio_result.get("audio_url", "")
-        
-        if audio_url:
+
+        audio_url = story.get("audio_url") or ""
+
+        try:
+            audio_bytes, _ = await tts_service.synthesize_bytes(story_content)
+            audio_filename = f"{story.get('author_id', 'public')}/{uuid4()}.wav"
+            supabase.storage.from_("audio-files").upload(
+                audio_filename,
+                audio_bytes,
+                {"content-type": "audio/wav"},
+            )
+            audio_url = supabase.storage.from_("audio-files").get_public_url(audio_filename)
             supabase.table("stories").update({
-                "audio_url": audio_url
+                "audio_url": audio_url,
+                "audio_status": "completed",
             }).eq("id", story_id).execute()
-        
+        except Exception as exc:
+            supabase.table("stories").update({"audio_status": "failed"}).eq("id", story_id).execute()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to generate audio: {str(exc)}",
+            ) from exc
+
         return {"audioUrl": audio_url}
         
     except Exception as e:
