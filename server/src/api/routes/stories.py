@@ -1,5 +1,6 @@
+import logging
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from uuid import uuid4
 
@@ -13,6 +14,11 @@ class CreateStoryRequest(BaseModel):
 class GenerateAudioRequest(BaseModel):
     speed: Optional[float] = 1.0
     voice: Optional[str] = None
+
+
+class CreateCommentRequest(BaseModel):
+    userId: str = Field(..., description="ID của người dùng gửi bình luận")
+    content: str = Field(..., min_length=1, description="Nội dung bình luận")
 
 
 @router.get("/{story_id}", response_model=None)
@@ -36,15 +42,66 @@ async def get_story(
         
         # Query the stories table
         response = supabase.table("stories").select("*").eq("id", story_id).execute()
-        
+
         if not response.data or len(response.data) == 0:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Story with id {story_id} not found"
             )
-        
+
         story_data = response.data[0]
-        
+
+        # Increment story view count and record the view event
+        try:
+            current_views = story_data.get("view_count") or 0
+            updated_views = current_views + 1
+            supabase.table("stories").update({"view_count": updated_views}).eq("id", story_id).execute()
+            story_data["view_count"] = updated_views
+        except Exception as exc:  # pragma: no cover - logging only
+            logging.getLogger(__name__).warning("Failed to update story view count: %s", exc)
+
+        try:
+            supabase.table("story_views").insert({"story_id": story_id}).execute()
+        except Exception as exc:  # pragma: no cover - logging only
+            logging.getLogger(__name__).warning("Failed to record story view: %s", exc)
+
+        # Fetch author profile information
+        author_profile = None
+        author_id = story_data.get("author_id")
+        if author_id:
+            profile_response = supabase.table("profiles").select("id, full_name, avatar_url").eq("id", author_id).execute()
+            if profile_response.data:
+                profile = profile_response.data[0]
+                author_profile = {
+                    "id": profile.get("id"),
+                    "fullName": profile.get("full_name"),
+                    "avatarUrl": profile.get("avatar_url"),
+                }
+
+        # Fetch comments with author information
+        comments_response = supabase.table("story_comments").select(
+            "id, content, created_at, story_id, user_id, profiles(id, full_name, avatar_url)"
+        ).eq("story_id", story_id).order("created_at", desc=True).execute()
+
+        comments_data = comments_response.data or []
+        comments = []
+        for comment in comments_data:
+            profile = comment.get("profiles") or {}
+            comments.append({
+                "id": comment.get("id"),
+                "storyId": comment.get("story_id"),
+                "userId": comment.get("user_id"),
+                "text": comment.get("content", ""),
+                "createdAt": comment.get("created_at"),
+                "author": {
+                    "id": profile.get("id") or comment.get("user_id"),
+                    "fullName": profile.get("full_name"),
+                    "avatarUrl": profile.get("avatar_url"),
+                },
+            })
+
+        comment_count = len(comments)
+
         # Map content_type values - convert STORY to TEXT as fallback
         content_type_raw = story_data.get("content_type")
         if content_type_raw:
@@ -62,25 +119,32 @@ async def get_story(
         # Handle visibility - map is_public boolean to visibility enum
         is_public = story_data.get("is_public", True)
         visibility = "PUBLIC" if is_public else "PRIVATE"
-        
+
         # Transform snake_case to camelCase and normalize values
         transformed = {
             "id": story_data.get("id"),
             "uploadId": story_data.get("upload_id", ""),
             "title": story_data.get("title", ""),
+            "description": story_data.get("description"),
             "content": story_data.get("content", ""),
             "audioUrl": story_data.get("audio_url"),
             "audioStatus": story_data.get("audio_status"),
             "status": story_data.get("status", "draft").upper(),
-            "views": story_data.get("views", 0),
+            "views": story_data.get("view_count") or 0,
             "createdAt": story_data.get("created_at", ""),
             "updatedAt": story_data.get("updated_at", ""),
             "contentType": content_type,
             "visibility": visibility,
+            "authorId": story_data.get("author_id"),
+            "coverImageUrl": story_data.get("cover_image_url"),
+            "thumbnailUrl": story_data.get("thumbnail_url"),
+            "author": author_profile,
+            "commentCount": comment_count,
+            "comments": comments,
         }
-        
+
         return transformed
-        
+
     except Exception as e:
         if isinstance(e, HTTPException):
             raise
@@ -187,25 +251,44 @@ async def create_story(request: CreateStoryRequest):
         # Handle visibility - map is_public boolean to visibility enum
         is_public = story_data.get("is_public", True)
         visibility = "PUBLIC" if is_public else "PRIVATE"
-        
+
+        author_profile = None
+        author_id = story_data.get("author_id")
+        if author_id:
+            profile_response = supabase.table("profiles").select("id, full_name, avatar_url").eq("id", author_id).execute()
+            if profile_response.data:
+                profile = profile_response.data[0]
+                author_profile = {
+                    "id": profile.get("id"),
+                    "fullName": profile.get("full_name"),
+                    "avatarUrl": profile.get("avatar_url"),
+                }
+
         # Transform to camelCase
         transformed = {
             "id": story_data.get("id"),
             "uploadId": story_data.get("upload_id", ""),
             "title": story_data.get("title", ""),
+            "description": story_data.get("description"),
             "content": story_data.get("content", ""),
             "audioUrl": story_data.get("audio_url"),
             "audioStatus": story_data.get("audio_status"),
             "status": story_data.get("status", "draft").upper(),
-            "views": story_data.get("views", 0),
+            "views": story_data.get("view_count") or 0,
             "createdAt": story_data.get("created_at", ""),
             "updatedAt": story_data.get("updated_at", ""),
             "contentType": content_type,
             "visibility": visibility,
+            "authorId": story_data.get("author_id"),
+            "coverImageUrl": story_data.get("cover_image_url"),
+            "thumbnailUrl": story_data.get("thumbnail_url"),
+            "author": author_profile,
+            "commentCount": 0,
+            "comments": [],
         }
-        
+
         return transformed
-        
+
     except Exception as e:
         if isinstance(e, HTTPException):
             raise
@@ -280,11 +363,86 @@ async def generate_audio(story_id: str, request: GenerateAudioRequest):
             ) from exc
 
         return {"audioUrl": audio_url}
-        
+
     except Exception as e:
         if isinstance(e, HTTPException):
             raise
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate audio: {str(e)}"
+        )
+
+
+@router.post("/{story_id}/comments", response_model=None)
+async def create_comment(story_id: str, request: CreateCommentRequest):
+    """Create a new comment for a story"""
+    content = request.content.strip()
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Comment content cannot be empty",
+        )
+
+    try:
+        from ...utils.config import get_settings
+        from supabase import create_client, Client
+
+        settings = get_settings()
+        supabase: Client = create_client(
+            settings.supabase_url,
+            settings.supabase_service_role_key,
+        )
+
+        # Ensure story exists
+        story_response = supabase.table("stories").select("id").eq("id", story_id).execute()
+        if not story_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Story with id {story_id} not found",
+            )
+
+        insert_payload = {
+            "story_id": story_id,
+            "user_id": request.userId,
+            "content": content,
+        }
+
+        insert_response = supabase.table("story_comments").insert(insert_payload).execute()
+        if not insert_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create comment",
+            )
+
+        comment_data = insert_response.data[0]
+
+        profile = None
+        profile_response = supabase.table("profiles").select("id, full_name, avatar_url").eq("id", request.userId).execute()
+        if profile_response.data:
+            profile_raw = profile_response.data[0]
+            profile = {
+                "id": profile_raw.get("id"),
+                "fullName": profile_raw.get("full_name"),
+                "avatarUrl": profile_raw.get("avatar_url"),
+            }
+
+        count_response = supabase.table("story_comments").select("id", count="exact").eq("story_id", story_id).execute()
+        comment_count = count_response.count if count_response and getattr(count_response, "count", None) is not None else None
+
+        return {
+            "id": comment_data.get("id"),
+            "storyId": comment_data.get("story_id"),
+            "userId": comment_data.get("user_id"),
+            "text": comment_data.get("content", ""),
+            "createdAt": comment_data.get("created_at"),
+            "author": profile,
+            "commentCount": comment_count,
+        }
+
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create comment: {str(e)}"
         )
