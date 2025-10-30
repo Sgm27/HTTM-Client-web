@@ -6,7 +6,7 @@ import { Loader2 } from 'lucide-react';
 import { useUserRole } from '@/hooks/useUserRole';
 import { UploadForm, UploadFormState } from '@/components/upload/UploadForm';
 import { ProgressBar } from '@/components/upload/ProgressBar';
-import { createStory, submitUpload, trackOcrProgress } from '@/lib/api/uploadApi';
+import { createStory, generateStoryAudio, submitUpload, trackOcrProgress } from '@/lib/api/uploadApi';
 import { ContentType, StoryStatus, Upload as UploadEntity, Visibility } from '@/entities';
 import { Button } from '@/components/ui/button';
 
@@ -25,7 +25,9 @@ const Upload = () => {
   const [upload, setUpload] = useState<UploadEntity | null>(null);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [ocrText, setOcrText] = useState<string | undefined>();
-  const [creatingStory, setCreatingStory] = useState(false);
+  const [createStoryStage, setCreateStoryStage] = useState<'idle' | 'creating' | 'generatingAudio'>(
+    'idle',
+  );
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -126,18 +128,40 @@ const Upload = () => {
 
   const handleCreateStory = async () => {
     if (!upload) return;
-    setCreatingStory(true);
+    setCreateStoryStage('creating');
+    let audioGenerationStarted = false;
     try {
       const story = await createStory(upload.id);
-      toast.success('Đã tạo truyện từ nội dung upload');
-      navigate(`/story/${story.id}`);
+      let audioUrl = story.audioUrl ?? undefined;
+
+      if (!audioUrl) {
+        audioGenerationStarted = true;
+        setCreateStoryStage('generatingAudio');
+        const generated = await toast.promise(generateStoryAudio(story.id), {
+          loading: 'Dang sinh audio...',
+          success: 'Da sinh audio thanh cong',
+          error: 'Khong the sinh audio cho truyen',
+        });
+        audioUrl = generated.audioUrl;
+      }
+
+      if (!audioUrl) {
+        toast.error('Khong the tao audio cho truyen');
+        return;
+      }
+
+      toast.success('Da tao truyen va audio thanh cong');
+      navigate('/story/' + story.id);
     } catch (error) {
       console.error('Create story error:', error);
-      toast.error('Không thể tạo truyện');
+      if (!audioGenerationStarted) {
+        toast.error('Khong the tao truyen');
+      }
     } finally {
-      setCreatingStory(false);
+      setCreateStoryStage('idle');
     }
   };
+
 
   if (authLoading) {
     return (
@@ -206,8 +230,18 @@ const Upload = () => {
                 </div>
               )}
               <div className="flex justify-end">
-                <Button onClick={handleCreateStory} disabled={!isReadyToCreateStory || creatingStory}>
-                  {creatingStory ? 'Đang tạo...' : 'Tạo Story'}
+                <Button
+                  onClick={handleCreateStory}
+                  disabled={!isReadyToCreateStory || createStoryStage !== 'idle'}
+                >
+                  {createStoryStage !== 'idle' && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                  )}
+                  {createStoryStage === 'generatingAudio'
+                    ? 'Dang tao audio...'
+                    : createStoryStage === 'creating'
+                      ? 'Dang tao...'
+                      : 'Tao Story'}
                 </Button>
               </div>
             </div>

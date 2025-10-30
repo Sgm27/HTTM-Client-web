@@ -203,9 +203,9 @@ class TTSService:
 tts_service = TTSService(
     model_name="sonktx/mms-tts-vie-finetuned",
     prefer_gpu=True,          # ưu tiên GPU
-    fallback_on_oom=False,    # KHÔNG tự fallback CPU khi OOM
+    fallback_on_oom=True,    # KHÔNG tự fallback CPU khi OOM
     cuda_device="cuda",       # hoặc "cuda:0"
-    max_chars=1000,
+    max_chars=10000000,
 )
 
 

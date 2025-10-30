@@ -78,25 +78,44 @@ async def get_story(
                     "avatarUrl": profile.get("avatar_url"),
                 }
 
-        # Fetch comments with author information
+        # Fetch comments and join profile data manually because there is no FK between story_comments and profiles
         comments_response = supabase.table("story_comments").select(
-            "id, content, created_at, story_id, user_id, profiles(id, full_name, avatar_url)"
+            "id, content, created_at, story_id, user_id"
         ).eq("story_id", story_id).order("created_at", desc=True).execute()
 
         comments_data = comments_response.data or []
+        user_ids = {comment.get("user_id") for comment in comments_data if comment.get("user_id")}
+        profiles_map = {}
+
+        if user_ids:
+            profile_response = (
+                supabase.table("profiles")
+                .select("id, full_name, avatar_url")
+                .in_("id", list(user_ids))
+                .execute()
+            )
+            for profile_row in profile_response.data or []:
+                profile_id = profile_row.get("id")
+                profiles_map[profile_id] = {
+                    "id": profile_id,
+                    "fullName": profile_row.get("full_name"),
+                    "avatarUrl": profile_row.get("avatar_url"),
+                }
+
         comments = []
         for comment in comments_data:
-            profile = comment.get("profiles") or {}
+            author_profile = profiles_map.get(comment.get("user_id"))
             comments.append({
                 "id": comment.get("id"),
                 "storyId": comment.get("story_id"),
                 "userId": comment.get("user_id"),
                 "text": comment.get("content", ""),
                 "createdAt": comment.get("created_at"),
-                "author": {
-                    "id": profile.get("id") or comment.get("user_id"),
-                    "fullName": profile.get("full_name"),
-                    "avatarUrl": profile.get("avatar_url"),
+                "author": author_profile
+                or {
+                    "id": comment.get("user_id"),
+                    "fullName": None,
+                    "avatarUrl": None,
                 },
             })
 
@@ -123,16 +142,16 @@ async def get_story(
         # Transform snake_case to camelCase and normalize values
         transformed = {
             "id": story_data.get("id"),
-            "uploadId": story_data.get("upload_id", ""),
-            "title": story_data.get("title", ""),
+            "uploadId": story_data.get("upload_id") or "",
+            "title": story_data.get("title") or "",
             "description": story_data.get("description"),
-            "content": story_data.get("content", ""),
+            "content": story_data.get("content") or "",
             "audioUrl": story_data.get("audio_url"),
             "audioStatus": story_data.get("audio_status"),
-            "status": story_data.get("status", "draft").upper(),
+            "status": (story_data.get("status") or "draft").upper(),
             "views": story_data.get("view_count") or 0,
-            "createdAt": story_data.get("created_at", ""),
-            "updatedAt": story_data.get("updated_at", ""),
+            "createdAt": story_data.get("created_at") or "",
+            "updatedAt": story_data.get("updated_at") or "",
             "contentType": content_type,
             "visibility": visibility,
             "authorId": story_data.get("author_id"),
