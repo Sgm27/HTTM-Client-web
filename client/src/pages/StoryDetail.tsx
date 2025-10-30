@@ -232,7 +232,7 @@ const StoryDetail = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="container max-w-5xl py-12 space-y-10">
+      <main className="container max-w-5xl space-y-10 pt-12 pb-40">
         <div className="flex items-center justify-between">
           <Button variant="ghost" onClick={() => navigate(-1)} className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" />
@@ -307,12 +307,10 @@ const StoryDetail = () => {
 
         <section className="space-y-4">
           <h2 className="text-2xl font-semibold">Nghe truyện</h2>
-          <Card className="p-4">
-            <AudioPlayer src={story.audioUrl ?? undefined} emptyMessage={audioMessage} />
-            {story.audioStatus === 'failed' && (
-              <p className="mt-3 text-sm text-destructive">Hệ thống chưa thể tạo audio cho truyện này.</p>
-            )}
-          </Card>
+          <AudioPlayer src={story.audioUrl ?? undefined} emptyMessage={audioMessage} />
+          {story.audioStatus === 'failed' && (
+            <p className="text-sm text-destructive">Hệ thống chưa thể tạo audio cho truyện này.</p>
+          )}
         </section>
 
         <section className="space-y-6">
