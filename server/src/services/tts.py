@@ -58,7 +58,7 @@ def _is_oom_error(err: BaseException) -> bool:
         "cuda out of memory",
         "cublas status alloc failed",
         "cudnn error",
-        "cuda error 2",  # sometimes shows up as alloc issues
+        "cuda error 2",  
         "failed to allocate",
         "resource exhausted",
     ]
@@ -145,7 +145,6 @@ class TTSService:
         if self._max_chars and len(text) > self._max_chars:
             raise HTTPException(status_code=413, detail=f"Text too long (>{self._max_chars} chars)")
 
-        # Try VietVoice first if enabled
         if self._use_vietvoice:
             try:
                 print("Attempting to use VietVoice TTS...")
@@ -159,7 +158,6 @@ class TTSService:
                     # Not an OOM (likely environment / ORT / CUDA mismatch) -> bubble up
                     raise HTTPException(status_code=500, detail=f"VietVoice failed: {e}")
 
-        # Use MMS as fallback or primary
         print("Using MMS TTS...")
         return await self._synthesize_with_mms(text)
 
@@ -303,8 +301,8 @@ class TTSService:
 
 tts_service = TTSService(
     model_name="sonktx/mms-tts-vie-finetuned",
-    prefer_gpu=True,            # đặt False để ép VietVoice chạy CPU (tránh lỗi ORT GPU)
-    fallback_on_oom=True,       # chỉ fallback MMS khi thực sự OOM
+    prefer_gpu=True,         
+    fallback_on_oom=True,    
     cuda_device="cuda",
     max_chars=100_000_000_000,
     use_vietvoice=True,

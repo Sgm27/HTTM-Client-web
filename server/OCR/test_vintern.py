@@ -100,12 +100,20 @@ def main():
     max_num    = 6
     use_thumbnail = True
     generation_config = dict(max_new_tokens=512, do_sample=False, num_beams=3, repetition_penalty=3.5)
-    question = '<image>\nMô tả hình ảnh một cách chi tiết trả về dạng markdown.'
+    question = """<image>\nExtract only the exact text visible in this comic/manga page.
+    No descriptions, no summaries, no JSON, no quotes, no translation.
+    Preserve original casing, punctuation, and line breaks.
+    Reading direction = RTL (panel order as specified).
+    Order: speech balloons → narration → SFX. Illegible → [illegible].
+    If no text → EMPTY.
+    Output only between:
+    <RAW_TEXT_ONLY>
+    ...transcription...
+    </RAW_TEXT_ONLY>"""
 
     if not os.path.isfile(args.image):
         raise FileNotFoundError(f"Không tìm thấy ảnh: {args.image}")
 
-    # Load model/tokenizer (giữ đúng kiểu Colab: bf16 + .cuda())
     try:
         model = AutoModel.from_pretrained(
             model_name,
@@ -124,16 +132,13 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, use_fast=False)
 
-    # Chuẩn bị input
     pixel_values = load_image(
         args.image, input_size=input_size, max_num=max_num, use_thumbnail=use_thumbnail
     ).to(torch.bfloat16).cuda()
 
-    # Gọi model.chat theo đúng Colab (đối số vị trí)
     response = model.chat(tokenizer, pixel_values, question, generation_config)
 
 
-    # In ra màn hình cho tiện xem nhanh
     print("\n===== OCR RESULT (preview) =====")
     print(response[:800] if isinstance(response, str) else str(response))
 

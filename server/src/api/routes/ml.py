@@ -25,7 +25,16 @@ def _require_tts_enabled(settings=Depends(get_settings)) -> None:
 async def run_ocr(
     _: None = Depends(_require_ocr_enabled),
     file: UploadFile = File(...),
-    question: str = Form("<image>\nMô tả hình ảnh một cách chi tiết trả về dạng markdown."),
+    question: str = Form("""<image>\nExtract only the exact text visible in this comic/manga page.
+    No descriptions, no summaries, no JSON, no quotes, no translation.
+    Preserve original casing, punctuation, and line breaks.
+    Reading direction = RTL (panel order as specified).
+    Order: speech balloons → narration → SFX. Illegible → [illegible].
+    If no text → EMPTY.
+    Output only between:
+    <RAW_TEXT_ONLY>
+    ...transcription...
+    </RAW_TEXT_ONLY>"""),
 ):
     from ...services.ocr import ocr_service
 

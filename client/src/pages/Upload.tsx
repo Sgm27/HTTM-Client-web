@@ -282,10 +282,10 @@ const Upload = () => {
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
                   )}
                   {createStoryStage === 'generatingAudio'
-                    ? 'Dang tao audio...'
+                    ? 'Đang tạo audio...'
                     : createStoryStage === 'creating'
-                      ? 'Dang tao...'
-                      : 'Tao Story'}
+                      ? 'Đang tạo...'
+                      : 'Tạo Story'}
                 </Button>
               </div>
             </div>

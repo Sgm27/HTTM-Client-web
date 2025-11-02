@@ -128,10 +128,8 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, use_fast=False)
     print("Model loaded successfully!")
     
-    # Image path (update this to your image)
     image_path = "your_image.jpg"
     
-    # Load and process image
     print(f"Processing image: {image_path}")
     pixel_values = load_image(image_path, max_num=6).to(torch.bfloat16).cuda()
     
@@ -143,8 +141,16 @@ def main():
         repetition_penalty=3.5
     )
     
-    # Question (in Vietnamese)
-    question = '<image>\nMô tả hình ảnh một cách chi tiết trả về dạng markdown.'
+    question = """<image>\nExtract only the exact text visible in this comic/manga page.
+    No descriptions, no summaries, no JSON, no quotes, no translation.
+    Preserve original casing, punctuation, and line breaks.
+    Reading direction = RTL (panel order as specified).
+    Order: speech balloons → narration → SFX. Illegible → [illegible].
+    If no text → EMPTY.
+    Output only between:
+    <RAW_TEXT_ONLY>
+    ...transcription...
+    </RAW_TEXT_ONLY>"""
     
     # Generate response
     print("\nGenerating response...")

@@ -16,29 +16,23 @@ async def generate_audio_background(story_id: str, story_content: str, author_id
         from supabase import create_client, Client
         from ...services.tts import tts_service
         
-        # Create new supabase client for background task
         supabase: Client = create_client(supabase_url, service_role_key)
         
-        # Update status to PROCESSING
         supabase.table("stories").update({"audio_status": "PROCESSING"}).eq("id", story_id).execute()
         logging.getLogger(__name__).info(f"Starting audio generation for story {story_id}")
         
         try:
-            # Generate audio (this can take several minutes)
             audio_bytes, _ = await tts_service.synthesize_bytes(story_content)
             audio_filename = f"{author_id}/{uuid4()}.wav"
             
-            # Upload to storage
             supabase.storage.from_("audio-files").upload(
                 audio_filename,
                 audio_bytes,
                 {"content-type": "audio/wav"},
             )
             
-            # Get public URL
             audio_url = supabase.storage.from_("audio-files").get_public_url(audio_filename)
             
-            # Update story with audio URL and COMPLETED status
             supabase.table("stories").update({
                 "audio_url": audio_url,
                 "audio_status": "COMPLETED",
@@ -47,7 +41,6 @@ async def generate_audio_background(story_id: str, story_content: str, author_id
             logging.getLogger(__name__).info(f"Successfully generated audio for story {story_id}")
             
         except Exception as e:
-            # Update status to FAILED
             supabase.table("stories").update({"audio_status": "FAILED"}).eq("id", story_id).execute()
             logging.getLogger(__name__).error(f"Failed to generate audio for story {story_id}: {e}")
             
@@ -65,8 +58,8 @@ class GenerateAudioRequest(BaseModel):
 
 
 class CreateCommentRequest(BaseModel):
-    userId: str = Field(..., description="ID của người dùng gửi bình luận")
-    content: str = Field(..., min_length=1, description="Nội dung bình luận")
+    userId: str = Field(..., description="ID of the user posting the comment")
+    content: str = Field(..., min_length=1, description="Content of the comment")
 
 
 @router.get("/{story_id}", response_model=None)
@@ -75,22 +68,18 @@ async def get_story(
 ):
     """Get story by ID from Supabase"""
     try:
-        # Use Supabase client to fetch story
         from ...utils.config import get_settings
         
         settings = get_settings()
         
-        # Import supabase client
         from supabase import create_client, Client
         
-        # Convert AnyHttpUrl to string to avoid regex issues
         supabase_url_str = str(settings.supabase_url) if hasattr(settings.supabase_url, '__str__') else settings.supabase_url
         supabase: Client = create_client(
             supabase_url_str,
             settings.supabase_anon_key
         )
         
-        # Query the stories table
         response = supabase.table("stories").select("*").eq("id", story_id).execute()
 
         if not response.data or len(response.data) == 0:
@@ -101,7 +90,6 @@ async def get_story(
 
         story_data = response.data[0]
 
-        # Increment story view count and record the view event
         try:
             current_views = story_data.get("view_count") or 0
             updated_views = current_views + 1
@@ -115,7 +103,6 @@ async def get_story(
         except Exception as exc:  # pragma: no cover - logging only
             logging.getLogger(__name__).warning("Failed to record story view: %s", exc)
 
-        # Fetch author profile information
         author_profile = None
         author_id = story_data.get("author_id")
         if author_id:
@@ -128,7 +115,6 @@ async def get_story(
                     "avatarUrl": profile.get("avatar_url"),
                 }
 
-        # Fetch comments and join profile data manually because there is no FK between story_comments and profiles
         comments_response = supabase.table("story_comments").select(
             "id, content, created_at, story_id, user_id"
         ).eq("story_id", story_id).order("created_at", desc=True).execute()
@@ -171,11 +157,9 @@ async def get_story(
 
         comment_count = len(comments)
 
-        # Map content_type values - convert STORY to TEXT as fallback
         content_type_raw = story_data.get("content_type")
         if content_type_raw:
             content_type_upper = content_type_raw.upper()
-            # Map STORY to TEXT, or use the value if it's valid
             if content_type_upper == "STORY":
                 content_type = "TEXT"
             elif content_type_upper in ["TEXT", "COMIC", "NEWS"]:
@@ -185,11 +169,9 @@ async def get_story(
         else:
             content_type = "TEXT"
         
-        # Handle visibility - map is_public boolean to visibility enum
         is_public = story_data.get("is_public", True)
         visibility = "PUBLIC" if is_public else "PRIVATE"
 
-        # Transform snake_case to camelCase and normalize values
         transformed = {
             "id": story_data.get("id"),
             "uploadId": story_data.get("upload_id") or "",
@@ -231,14 +213,12 @@ async def create_story(request: CreateStoryRequest, background_tasks: Background
         from supabase import create_client, Client
         
         settings = get_settings()
-        # Convert AnyHttpUrl to string to avoid regex issues
         supabase_url_str = str(settings.supabase_url) if hasattr(settings.supabase_url, '__str__') else settings.supabase_url
         supabase: Client = create_client(
             supabase_url_str,
             settings.supabase_service_role_key  # Use service role for server operations
         )
         
-        # First, get the upload data
         upload_response = supabase.table("uploads").select("*").eq("id", request.uploadId).execute()
         
         if not upload_response.data or len(upload_response.data) == 0:
@@ -249,13 +229,11 @@ async def create_story(request: CreateStoryRequest, background_tasks: Background
         
         upload_data = upload_response.data[0]
         
-        # Map visibility to is_public boolean
         visibility = upload_data.get("visibility", "PUBLIC")
         is_public = visibility.upper() == "PUBLIC"
         
         extracted_text = upload_data.get("extracted_text", "") or ""
         has_content = bool(extracted_text.strip())
-        # Always start with 'PENDING' (uppercase) to match database constraint
         initial_audio_status = "PENDING"
 
         # Get thumbnail URL if thumbnail_file_id exists
@@ -329,10 +307,8 @@ async def create_story(request: CreateStoryRequest, background_tasks: Background
                 supabase_url=supabase_url_str,
                 service_role_key=settings.supabase_service_role_key
             )
-            # Set status to PROCESSING - background task will update it to COMPLETED or FAILED
             story_data["audio_status"] = "PROCESSING"
         
-        # Map content_type values - convert STORY to TEXT as fallback
         content_type_raw = story_data.get("content_type")
         if content_type_raw:
             content_type_upper = content_type_raw.upper()
@@ -345,7 +321,6 @@ async def create_story(request: CreateStoryRequest, background_tasks: Background
         else:
             content_type = "TEXT"
         
-        # Handle visibility - map is_public boolean to visibility enum
         is_public = story_data.get("is_public", True)
         visibility = "PUBLIC" if is_public else "PRIVATE"
 
@@ -409,7 +384,6 @@ async def get_audio_status(story_id: str):
             settings.supabase_service_role_key
         )
         
-        # Get the story's audio status
         story_response = supabase.table("stories").select("audio_status, audio_url").eq("id", story_id).execute()
         
         if not story_response.data or len(story_response.data) == 0:
@@ -442,14 +416,12 @@ async def generate_audio(story_id: str, request: GenerateAudioRequest):
         from supabase import create_client, Client
         
         settings = get_settings()
-        # Convert AnyHttpUrl to string to avoid regex issues
         supabase_url_str = str(settings.supabase_url) if hasattr(settings.supabase_url, '__str__') else settings.supabase_url
         supabase: Client = create_client(
             supabase_url_str,
             settings.supabase_service_role_key
         )
         
-        # Get the story first
         story_response = supabase.table("stories").select("*").eq("id", story_id).execute()
         
         if not story_response.data or len(story_response.data) == 0:
@@ -460,7 +432,6 @@ async def generate_audio(story_id: str, request: GenerateAudioRequest):
         
         story = story_response.data[0]
         
-        # Check if TTS service is enabled
         if not settings.tts_service_enabled:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
