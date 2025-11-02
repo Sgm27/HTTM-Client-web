@@ -11,9 +11,10 @@ export default defineConfig(({ mode }) => ({
     allowedHosts: ["httm.sonktx.online"],
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'https://backend-httm-client.sonktx.online',
+        // target: 'http://localhost:8000',
         changeOrigin: true,
-        secure: false,
+        secure: true,
       },
     },
   },
