@@ -6,7 +6,7 @@ import { Loader2 } from 'lucide-react';
 import { useUserRole } from '@/hooks/useUserRole';
 import { UploadForm, UploadFormState } from '@/components/upload/UploadForm';
 import { ProgressBar } from '@/components/upload/ProgressBar';
-import { createStory, generateStoryAudio, submitUpload, trackOcrProgress } from '@/lib/api/uploadApi';
+import { createStory, submitUpload, trackOcrProgress, getAudioStatus } from '@/lib/api/uploadApi';
 import { ContentType, StoryStatus, Upload as UploadEntity, Visibility } from '@/entities';
 import { Button } from '@/components/ui/button';
 
@@ -129,34 +129,68 @@ const Upload = () => {
   const handleCreateStory = async () => {
     if (!upload) return;
     setCreateStoryStage('creating');
-    let audioGenerationStarted = false;
+    
     try {
+      // Step 1: Create story (this will start audio generation in background)
       const story = await createStory(upload.id);
-      let audioUrl = story.audioUrl ?? undefined;
+      
+      // Step 2: Check if audio is already available or needs generation
+      const audioStatus = story.audioStatus;
 
-      if (!audioUrl) {
-        audioGenerationStarted = true;
+      // If audio is not completed, start polling
+      if (audioStatus === 'PENDING' || audioStatus === 'PROCESSING') {
         setCreateStoryStage('generatingAudio');
-        const generated = await toast.promise(generateStoryAudio(story.id), {
-          loading: 'Dang sinh audio...',
-          success: 'Da sinh audio thanh cong',
-          error: 'Khong the sinh audio cho truyen',
-        });
-        audioUrl = generated.audioUrl;
+        toast.info('Đang tạo audio, vui lòng đợi...');
+
+        // Poll for audio status every 10 seconds
+        const pollInterval = 10000; // 10 seconds
+        const maxAttempts = 600; // Maximum 100 minutes (60 * 10s)
+        let attempts = 0;
+
+        const pollAudioStatus = async (): Promise<void> => {
+          while (attempts < maxAttempts) {
+            attempts++;
+            
+            try {
+              const statusResponse = await getAudioStatus(story.id);
+              
+              if (statusResponse.audioStatus === 'COMPLETED') {
+                toast.success('Audio đã được tạo thành công!');
+                break;
+              } else if (statusResponse.audioStatus === 'FAILED') {
+                toast.error('Không thể tạo audio cho truyện');
+                break;
+              }
+              
+              // Update progress message
+              if (attempts % 3 === 0) {
+                toast.info(`Đang xử lý audio... (${attempts * 10}s)`);
+              }
+              
+              // Wait before next poll
+              await new Promise(resolve => setTimeout(resolve, pollInterval));
+            } catch (error) {
+              console.error('Error polling audio status:', error);
+              // Continue polling even if there's an error
+              await new Promise(resolve => setTimeout(resolve, pollInterval));
+            }
+          }
+
+          if (attempts >= maxAttempts) {
+            toast.error('Quá thời gian chờ tạo audio. Vui lòng thử lại sau.');
+          }
+        };
+
+        await pollAudioStatus();
       }
 
-      if (!audioUrl) {
-        toast.error('Khong the tao audio cho truyen');
-        return;
-      }
-
-      toast.success('Da tao truyen va audio thanh cong');
+      // Navigate to story page regardless of audio status
+      toast.success('Đã tạo truyện thành công!');
       navigate('/story/' + story.id);
+      
     } catch (error) {
       console.error('Create story error:', error);
-      if (!audioGenerationStarted) {
-        toast.error('Khong the tao truyen');
-      }
+      toast.error('Không thể tạo truyện');
     } finally {
       setCreateStoryStage('idle');
     }

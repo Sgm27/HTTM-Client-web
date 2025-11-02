@@ -102,3 +102,24 @@ export async function generateStoryAudio(storyId: string, option?: TTSOption) {
 
   return handleJsonResponse(response, generateAudioResponseSchema);
 }
+
+export type AudioStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+
+export interface AudioStatusResponse {
+  audioStatus: AudioStatus;
+  audioUrl?: string;
+}
+
+const audioStatusResponseSchema = z.object({
+  audioStatus: z.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']),
+  audioUrl: z.string().optional().nullable(),
+});
+
+export async function getAudioStatus(storyId: string): Promise<AudioStatusResponse> {
+  const response = await fetch(`${API_BASE}/stories/${storyId}/audio-status`);
+  const data = await handleJsonResponse(response, audioStatusResponseSchema);
+  return {
+    audioStatus: data.audioStatus,
+    audioUrl: data.audioUrl ?? undefined,
+  };
+}

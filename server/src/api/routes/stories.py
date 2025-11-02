@@ -1,10 +1,58 @@
 import logging
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, BackgroundTasks
 from pydantic import BaseModel, Field
 from typing import Optional
 from uuid import uuid4
 
 router = APIRouter(prefix="/stories", tags=["stories"])
+
+
+async def generate_audio_background(story_id: str, story_content: str, author_id: str, supabase_url: str, service_role_key: str):
+    """
+    Background task to generate audio for a story.
+    This runs after the response is sent to the client.
+    """
+    try:
+        from supabase import create_client, Client
+        from ...services.tts import tts_service
+        
+        # Create new supabase client for background task
+        supabase: Client = create_client(supabase_url, service_role_key)
+        
+        # Update status to PROCESSING
+        supabase.table("stories").update({"audio_status": "PROCESSING"}).eq("id", story_id).execute()
+        logging.getLogger(__name__).info(f"Starting audio generation for story {story_id}")
+        
+        try:
+            # Generate audio (this can take several minutes)
+            audio_bytes, _ = await tts_service.synthesize_bytes(story_content)
+            audio_filename = f"{author_id}/{uuid4()}.wav"
+            
+            # Upload to storage
+            supabase.storage.from_("audio-files").upload(
+                audio_filename,
+                audio_bytes,
+                {"content-type": "audio/wav"},
+            )
+            
+            # Get public URL
+            audio_url = supabase.storage.from_("audio-files").get_public_url(audio_filename)
+            
+            # Update story with audio URL and COMPLETED status
+            supabase.table("stories").update({
+                "audio_url": audio_url,
+                "audio_status": "COMPLETED",
+            }).eq("id", story_id).execute()
+            
+            logging.getLogger(__name__).info(f"Successfully generated audio for story {story_id}")
+            
+        except Exception as e:
+            # Update status to FAILED
+            supabase.table("stories").update({"audio_status": "FAILED"}).eq("id", story_id).execute()
+            logging.getLogger(__name__).error(f"Failed to generate audio for story {story_id}: {e}")
+            
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Background audio generation failed for story {story_id}: {e}")
 
 
 class CreateStoryRequest(BaseModel):
@@ -176,7 +224,7 @@ async def get_story(
 
 
 @router.post("", response_model=None)
-async def create_story(request: CreateStoryRequest):
+async def create_story(request: CreateStoryRequest, background_tasks: BackgroundTasks):
     """Create a new story from upload"""
     try:
         from ...utils.config import get_settings
@@ -265,30 +313,24 @@ async def create_story(request: CreateStoryRequest):
         
         story_data = response.data[0]
 
-        # Generate TTS audio automatically when possible
+        # Schedule audio generation as background task (non-blocking)
+        # This allows the response to be sent immediately while audio generates in background
         story_content = story_data.get("content", "") or ""
+        story_id = story_data.get("id")
+        author_id = story_data.get("author_id", "public")
+        
         if settings.tts_service_enabled and story_content.strip():
-            from ...services.tts import tts_service
-
-            supabase.table("stories").update({"audio_status": "PROCESSING"}).eq("id", story_data.get("id")).execute()
-            try:
-                audio_bytes, _ = await tts_service.synthesize_bytes(story_content)
-                audio_filename = f"{story_data.get('author_id', 'public')}/{uuid4()}.wav"
-                supabase.storage.from_("audio-files").upload(
-                    audio_filename,
-                    audio_bytes,
-                    {"content-type": "audio/wav"},
-                )
-                audio_url = supabase.storage.from_("audio-files").get_public_url(audio_filename)
-                supabase.table("stories").update({
-                    "audio_url": audio_url,
-                    "audio_status": "COMPLETED",
-                }).eq("id", story_data.get("id")).execute()
-                story_data["audio_url"] = audio_url
-                story_data["audio_status"] = "COMPLETED"
-            except Exception:
-                supabase.table("stories").update({"audio_status": "FAILED"}).eq("id", story_data.get("id")).execute()
-                story_data["audio_status"] = "FAILED"
+            # Add background task to generate audio
+            background_tasks.add_task(
+                generate_audio_background,
+                story_id=story_id,
+                story_content=story_content,
+                author_id=author_id,
+                supabase_url=supabase_url_str,
+                service_role_key=settings.supabase_service_role_key
+            )
+            # Set status to PROCESSING - background task will update it to COMPLETED or FAILED
+            story_data["audio_status"] = "PROCESSING"
         
         # Map content_type values - convert STORY to TEXT as fallback
         content_type_raw = story_data.get("content_type")
@@ -350,6 +392,45 @@ async def create_story(request: CreateStoryRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create story: {str(e)}"
+        )
+
+
+@router.get("/{story_id}/audio-status", response_model=None)
+async def get_audio_status(story_id: str):
+    """Get the audio generation status for a story"""
+    try:
+        from ...utils.config import get_settings
+        from supabase import create_client, Client
+        
+        settings = get_settings()
+        supabase_url_str = str(settings.supabase_url) if hasattr(settings.supabase_url, '__str__') else settings.supabase_url
+        supabase: Client = create_client(
+            supabase_url_str,
+            settings.supabase_service_role_key
+        )
+        
+        # Get the story's audio status
+        story_response = supabase.table("stories").select("audio_status, audio_url").eq("id", story_id).execute()
+        
+        if not story_response.data or len(story_response.data) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Story with id {story_id} not found"
+            )
+        
+        story = story_response.data[0]
+        
+        return {
+            "audioStatus": story.get("audio_status"),
+            "audioUrl": story.get("audio_url"),
+        }
+    
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get audio status: {str(e)}"
         )
 
 
