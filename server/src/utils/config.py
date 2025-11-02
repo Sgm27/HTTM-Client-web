@@ -64,6 +64,7 @@ if BaseSettings is not None and Field is not None and field_validator is not Non
         class Config:
             env_file = ".env"
             env_file_encoding = "utf-8"
+            extra = "ignore"  
 
         @field_validator("backend_cors_origins", mode="before")
         def _split(cls, value: str | List[str] | None) -> List[str]:

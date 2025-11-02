@@ -72,7 +72,6 @@ export const UploadForm = ({ state, onStateChange, onSubmit, loading }: UploadFo
                 <SelectContent>
                   <SelectItem value={Visibility.PUBLIC}>Công khai</SelectItem>
                   <SelectItem value={Visibility.PRIVATE}>Riêng tư</SelectItem>
-                  <SelectItem value={Visibility.UNLISTED}>Không công khai</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -14,20 +14,19 @@ OCR_DIR = os.path.join(WORKSPACE_ROOT, "OCR")
 if OCR_DIR not in sys.path:
     sys.path.insert(0, OCR_DIR)
 
-try:  # pragma: no cover - optional dependencies
+try:
     import torch
-except Exception:  # pragma: no cover
-    torch = None  # type: ignore
+except Exception:  
+    torch = None
 
-try:  # pragma: no cover
-    from transformers import AutoModel, AutoTokenizer  # type: ignore
-except Exception:  # pragma: no cover
-    AutoModel = None  # type: ignore
-    AutoTokenizer = None  # type: ignore
+try:
+    from transformers import AutoModel, AutoTokenizer  
+except Exception:
+    AutoModel = None
+    AutoTokenizer = None
 
-# Lazy import of local vintern implementation
-try:  # pragma: no cover
-    import vintern_1b as vintern  # type: ignore
+try:  
+    import vintern_1b as vintern  
 except Exception:  # pragma: no cover
     vintern = None  # type: ignore
 
@@ -49,7 +48,7 @@ class OCRService:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         self._ocr_device = device
 
-        try:  # pragma: no cover - heavy dependency path
+        try:  
             model = AutoModel.from_pretrained(
                 model_name,
                 torch_dtype=getattr(torch, "bfloat16", None) or getattr(torch, "float16", torch.float32),
@@ -57,7 +56,7 @@ class OCRService:
                 trust_remote_code=True,
                 use_flash_attn=False,
             ).eval()
-        except Exception:  # pragma: no cover
+        except Exception:  
             model = AutoModel.from_pretrained(
                 model_name,
                 torch_dtype=getattr(torch, "bfloat16", None) or getattr(torch, "float16", torch.float32),
@@ -106,9 +105,9 @@ class OCRService:
             repetition_penalty=3.5,
         )
 
-        try:  # pragma: no cover - heavy inference
+        try:  
             response = self._ocr_model.chat(self._ocr_tokenizer, pixel_values_tensor, question, generation_config)
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:  
             raise HTTPException(status_code=500, detail=f"OCR inference failed: {exc}") from exc
 
         return {"answer": response}

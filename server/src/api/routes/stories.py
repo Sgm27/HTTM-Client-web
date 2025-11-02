@@ -35,8 +35,10 @@ async def get_story(
         # Import supabase client
         from supabase import create_client, Client
         
+        # Convert AnyHttpUrl to string to avoid regex issues
+        supabase_url_str = str(settings.supabase_url) if hasattr(settings.supabase_url, '__str__') else settings.supabase_url
         supabase: Client = create_client(
-            settings.supabase_url,
+            supabase_url_str,
             settings.supabase_anon_key
         )
         
@@ -181,8 +183,10 @@ async def create_story(request: CreateStoryRequest):
         from supabase import create_client, Client
         
         settings = get_settings()
+        # Convert AnyHttpUrl to string to avoid regex issues
+        supabase_url_str = str(settings.supabase_url) if hasattr(settings.supabase_url, '__str__') else settings.supabase_url
         supabase: Client = create_client(
-            settings.supabase_url,
+            supabase_url_str,
             settings.supabase_service_role_key  # Use service role for server operations
         )
         
@@ -206,6 +210,37 @@ async def create_story(request: CreateStoryRequest):
         # Always start with 'PENDING' (uppercase) to match database constraint
         initial_audio_status = "PENDING"
 
+        # Get thumbnail URL if thumbnail_file_id exists
+        thumbnail_url = None
+        thumbnail_file_id = upload_data.get("thumbnail_file_id")
+        if thumbnail_file_id:
+            from urllib.parse import quote
+            
+            # Helper function to build public URL
+            def _build_public_url(base_url: str, bucket: str, path: str) -> str:
+                normalized = path.lstrip("/")
+                encoded = quote(normalized, safe="/")
+                return f"{base_url.rstrip('/')}/storage/v1/object/public/{bucket}/{encoded}"
+            
+            # Helper function to extract public URL
+            def _extract_public_url(result, fallback: str) -> str:
+                if isinstance(result, dict):
+                    data = result.get("data")
+                    if isinstance(data, dict):
+                        url = data.get("publicUrl") or data.get("publicURL")
+                        if url:
+                            return url
+                    url = result.get("publicUrl") or result.get("publicURL")
+                    if url:
+                        return url
+                return fallback
+            
+            thumbnail_public = supabase.storage.from_("uploads").get_public_url(thumbnail_file_id)
+            thumbnail_url = _extract_public_url(
+                thumbnail_public,
+                _build_public_url(supabase_url_str, "uploads", thumbnail_file_id),
+            )
+
         # Create story from upload data
         story_insert = {
             "upload_id": request.uploadId,
@@ -217,6 +252,7 @@ async def create_story(request: CreateStoryRequest):
             "is_public": is_public,
             "status": "PUBLISHED",  # Mark as published when creating story
             "audio_status": initial_audio_status,
+            "thumbnail_url": thumbnail_url,  # Add thumbnail URL to story
         }
 
         response = supabase.table("stories").insert(story_insert).execute()
@@ -325,8 +361,10 @@ async def generate_audio(story_id: str, request: GenerateAudioRequest):
         from supabase import create_client, Client
         
         settings = get_settings()
+        # Convert AnyHttpUrl to string to avoid regex issues
+        supabase_url_str = str(settings.supabase_url) if hasattr(settings.supabase_url, '__str__') else settings.supabase_url
         supabase: Client = create_client(
-            settings.supabase_url,
+            supabase_url_str,
             settings.supabase_service_role_key
         )
         
@@ -407,8 +445,10 @@ async def create_comment(story_id: str, request: CreateCommentRequest):
         from supabase import create_client, Client
 
         settings = get_settings()
+        # Convert AnyHttpUrl to string to avoid regex issues
+        supabase_url_str = str(settings.supabase_url) if hasattr(settings.supabase_url, '__str__') else settings.supabase_url
         supabase: Client = create_client(
-            settings.supabase_url,
+            supabase_url_str,
             settings.supabase_service_role_key,
         )
 

@@ -5,6 +5,7 @@ import os
 import tempfile
 import wave
 import threading
+import sys
 from typing import Optional, Any
 
 from fastapi import HTTPException
@@ -12,34 +13,54 @@ from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
-# ---- Optional dependency wrappers (giữ nguyên phong cách from your code) ----
-try:  # pragma: no cover - optional dependency wrapper
-    import numpy as np  # type: ignore
-except Exception:  # pragma: no cover
-    np = None  # type: ignore
+try:  
+    import numpy as np  
+except Exception:  
+    np = None  
 
-try:  # pragma: no cover
-    import torch  # type: ignore
-except Exception:  # pragma: no cover
-    torch = None  # type: ignore
+try:  
+    import torch  
+except Exception:  
+    torch = None  
 
-try:  # pragma: no cover
-    from transformers import AutoTokenizer, VitsModel  # type: ignore
-except Exception:  # pragma: no cover
-    AutoTokenizer = None  # type: ignore
-    VitsModel = None  # type: ignore
+try:  
+    from transformers import AutoTokenizer, VitsModel  
+except Exception:  
+    AutoTokenizer = None  
+    VitsModel = None  
+
+try:  
+    vietvoice_path = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../TTS/VietVoice-TTS'))
+    if os.path.exists(vietvoice_path) and vietvoice_path not in sys.path:
+        sys.path.insert(0, vietvoice_path)
+        print(f"Added VietVoice path to sys.path: {vietvoice_path}")
+    
+    from vietvoice_api import synthesize_vietvoictts
+    e  # type: ignore
+    VIETVOICE_AVAILABLE = True
+    print("VietVoice TTS loaded successfully")
+except Exception as e:  
+    synthesize_vietvoice = None  
+    VIETVOICE_AVAILABLE = False
+    print(f"VietVoice TTS not available: {e}")
+    import traceback
+    traceback.print_exc()
 
 
 class TTSService:
-    """Synthesize Vietnamese speech using an MMS VITS model."""
+    """Synthesize Vietnamese speech using VietVoice TTS with fallback to MMS VITS model."""
 
     def __init__(
         self,
         model_name: str = "sonktx/mms-tts-vie-finetuned",
         prefer_gpu: bool = True,
         fallback_on_oom: bool = False,
-        cuda_device: str = "cuda",  # "cuda" hoặc "cuda:0"
-        max_chars: int = 1000,      # giới hạn input để tránh DoS
+        cuda_device: str = "cuda", 
+        max_chars: int = 10000000,    
+        use_vietvoice: bool = True,     
+        vietvoice_gender: str = "female",   
+        vietvoice_area: str = "central",
+        vietvoice_emotion: str = "neutral",
     ) -> None:
         self._model_name = model_name
         self._model: Optional[Any] = None
@@ -48,17 +69,20 @@ class TTSService:
         self._sampling_rate: int = 22050
         self._initialized = False
 
-        # cấu hình hành vi thiết bị
         self._prefer_gpu = prefer_gpu
         self._fallback_on_oom = fallback_on_oom
         self._cuda_device = cuda_device
         self._max_chars = max_chars
 
-        # tránh race khi nhiều request cùng load model
+        self._use_vietvoice = use_vietvoice and VIETVOICE_AVAILABLE
+        self._vietvoice_gender = vietvoice_gender
+        self._vietvoice_area = vietvoice_area
+        self._vietvoice_emotion = vietvoice_emotion
+
         self._load_lock = threading.Lock()
 
     def load(self) -> None:
-        """Load tokenizer & model; ưu tiên GPU. Không fallback CPU khi GPU OOM trừ khi bật fallback_on_oom."""
+        """Load the TTS model preferably on GPU. failback to CPU if OOM and configured."""
         if self._initialized:
             return
 
@@ -69,21 +93,19 @@ class TTSService:
             if self._initialized:
                 return
 
-            # ƯU TIÊN GPU: dùng GPU nếu có; nếu không có GPU thì dùng CPU.
             use_cuda = bool(self._prefer_gpu and torch.cuda.is_available())
             device = self._cuda_device if use_cuda else "cpu"
 
-            try:  # pragma: no cover - heavyweight model load
+            try: 
                 tokenizer = AutoTokenizer.from_pretrained(self._model_name)
                 model = VitsModel.from_pretrained(self._model_name).eval()
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc: 
                 raise RuntimeError(f"Unable to load TTS model: {exc}") from exc
 
             if device.startswith("cuda"):
                 try:
-                    model = model.to(device)  # có thể gây OOM
+                    model = model.to(device)  
                 except RuntimeError as e:
-                    # Mặc định KHÔNG fallback nếu GPU có nhưng OOM
                     if self._fallback_on_oom and "out of memory" in str(e).lower():
                         device = "cpu"
                     else:
@@ -96,16 +118,55 @@ class TTSService:
             self._initialized = True
 
     async def _synthesize_to_file(self, text: str) -> tuple[str, float]:
-        """Sinh tiếng nói và trả về đường dẫn file tạm thời cùng thời lượng."""
+        """Synthesize speech and save to a temporary WAV file."""
         if not text or not text.strip():
             raise HTTPException(status_code=400, detail="Text is required for synthesis")
 
-        # Chuẩn hóa khoảng trắng & giới hạn độ dài
         text = " ".join(text.split())
         if self._max_chars and len(text) > self._max_chars:
             raise HTTPException(status_code=413, detail=f"Text too long (>{self._max_chars} chars)")
 
-        # load có thể nặng → offload để không block event loop
+        # Try VietVoice first if enabled
+        if self._use_vietvoice:
+            try:
+                print("Attempting to use VietVoice TTS...")
+                return await self._synthesize_with_vietvoice(text)
+            except Exception as e:
+                print(f"VietVoice TTS failed: {e}. Falling back to MMS...")
+                # Continue to MMS fallback
+
+        # Use MMS as fallback or primary
+        print("Using MMS TTS...")
+        return await self._synthesize_with_mms(text)
+
+    async def _synthesize_with_vietvoice(self, text: str) -> tuple[str, float]:
+        """Sử dụng VietVoice TTS để tổng hợp giọng nói."""
+        if not VIETVOICE_AVAILABLE or synthesize_vietvoice is None:
+            raise RuntimeError("VietVoice TTS is not available")
+            
+        def _vietvoice_infer() -> tuple[str, float]:
+            fd, wav_path = tempfile.mkstemp(suffix=".wav")
+            os.close(fd)
+            
+            try:
+                duration = synthesize_vietvoice(
+                    text=text,
+                    output_path=wav_path,
+                    gender=self._vietvoice_gender,
+                    area=self._vietvoice_area,
+                    emotion=self._vietvoice_emotion
+                )
+                return wav_path, duration
+            except Exception as e:
+                with contextlib.suppress(OSError):
+                    os.remove(wav_path)
+                # Re-raise để trigger fallback
+                raise RuntimeError(f"VietVoice synthesis failed: {e}") from e
+
+        return await run_in_threadpool(_vietvoice_infer)
+
+    async def _synthesize_with_mms(self, text: str) -> tuple[str, float]:
+        """Use MMS VITS model to synthesize speech (fallback)."""
         try:
             await run_in_threadpool(self.load)
         except RuntimeError as exc:
@@ -119,19 +180,16 @@ class TTSService:
         device = self._device or "cpu"
 
         def _infer_and_write() -> tuple[str, float]:
-            # Tokenize
             inputs = tokenizer(text, return_tensors="pt")
             if device.startswith("cuda"):
                 inputs = {k: v.to(device) for k, v in inputs.items()}
 
-            # Inference (không gradient)
             with torch.inference_mode():
                 out = model(**inputs)
                 waveform_tensor = getattr(out, "waveform", None)
                 if waveform_tensor is None:
                     raise RuntimeError("Model did not return 'waveform'")
 
-            # Tensor -> PCM16
             waveform = waveform_tensor.squeeze().detach().cpu().numpy().astype(np.float32)
             if waveform.ndim == 0:
                 waveform = np.expand_dims(waveform, axis=0)
@@ -142,9 +200,8 @@ class TTSService:
 
             pcm16 = (waveform * 32767.0).clip(-32768, 32767).astype(np.int16)
 
-            # Ghi WAV vào file tạm
             fd, wav_path = tempfile.mkstemp(suffix=".wav")
-            os.close(fd)  # đóng fd thô trước khi wave.open
+            os.close(fd) 
             try:
                 with wave.open(wav_path, "wb") as wav_file:
                     wav_file.setnchannels(1)
@@ -159,14 +216,13 @@ class TTSService:
             duration_seconds = pcm16.size / float(self._sampling_rate)
             return wav_path, duration_seconds
 
-        # Offload inference + ghi file
         try:
             return await run_in_threadpool(_infer_and_write)
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:  
             raise HTTPException(status_code=500, detail=f"TTS synthesis failed: {exc}") from exc
 
     async def synthesize(self, text: str) -> FileResponse:
-        """Sinh tiếng nói và trả về FileResponse (.wav)."""
+        """Generate speech and return FileResponse (.wav)."""
         wav_path, duration_seconds = await self._synthesize_to_file(text)
 
         headers = {"X-Audio-Duration": f"{duration_seconds:.2f}"}
@@ -186,12 +242,25 @@ class TTSService:
         )
 
     async def synthesize_bytes(self, text: str) -> tuple[bytes, float]:
-        """Sinh tiếng nói và trả về nội dung nhị phân cùng thời lượng."""
-        wav_path, duration_seconds = await self._synthesize_to_file(text)
+        """Generate speech and return bytes content along with duration."""
+        try:
+            wav_path, duration_seconds = await self._synthesize_to_file(text)
+        except HTTPException:
+            raise  # Re-raise HTTPExceptions as-is
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500, 
+                detail=f"TTS synthesis failed: {exc}"
+            ) from exc
 
         try:
             with open(wav_path, "rb") as wav_file:
                 data = wav_file.read()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to read audio file: {exc}"
+            ) from exc
         finally:
             with contextlib.suppress(OSError):
                 os.remove(wav_path)
@@ -199,13 +268,16 @@ class TTSService:
         return data, duration_seconds
 
 
-# ---- Public instance + startup helper (giữ API tương tự) ----
 tts_service = TTSService(
     model_name="sonktx/mms-tts-vie-finetuned",
-    prefer_gpu=True,          # ưu tiên GPU
-    fallback_on_oom=True,    # KHÔNG tự fallback CPU khi OOM
-    cuda_device="cuda",       # hoặc "cuda:0"
+    prefer_gpu=True,        
+    fallback_on_oom=True,     
+    cuda_device="cuda",   
     max_chars=10000000,
+    use_vietvoice=True,       
+    vietvoice_gender="female",
+    vietvoice_area="central",
+    vietvoice_emotion="neutral",
 )
 
 

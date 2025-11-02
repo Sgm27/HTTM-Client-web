@@ -19,6 +19,7 @@ class Upload:
     status: StoryStatus
     progress: int | None = None
     error_reason: str | None = None
+    extracted_text: str | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 

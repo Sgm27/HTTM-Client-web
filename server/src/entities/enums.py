@@ -12,7 +12,6 @@ class ContentType(str, Enum):
 class Visibility(str, Enum):
     PUBLIC = "PUBLIC"
     PRIVATE = "PRIVATE"
-    UNLISTED = "UNLISTED"
 
 
 class StoryStatus(str, Enum):

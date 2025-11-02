@@ -9,3 +9,7 @@ torch
 hf-xet
 supabase
 python-dotenv
+PyPDF2
+python-docx
+pytest
+pytest-asyncio

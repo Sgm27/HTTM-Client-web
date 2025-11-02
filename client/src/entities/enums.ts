@@ -7,7 +7,6 @@ export enum ContentType {
 export enum Visibility {
   PUBLIC = 'PUBLIC',
   PRIVATE = 'PRIVATE',
-  UNLISTED = 'UNLISTED',
 }
 
 export enum StoryStatus {

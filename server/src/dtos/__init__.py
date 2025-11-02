@@ -1,9 +1,20 @@
-from .upload import UploadRequest, UploadResponse
+from .upload import (
+    CreateUploadResponse,
+    UploadCreateRecord,
+    UploadDTO,
+    UploadError,
+    UploadFilePayload,
+    UploadRequest,
+)
 from .story import CreateStoryRequest, GenerateAudioResponse, StoryResponse
 
 __all__ = [
     "UploadRequest",
-    "UploadResponse",
+    "UploadFilePayload",
+    "UploadCreateRecord",
+    "UploadDTO",
+    "CreateUploadResponse",
+    "UploadError",
     "CreateStoryRequest",
     "GenerateAudioResponse",
     "StoryResponse",

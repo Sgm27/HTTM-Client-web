@@ -11,8 +11,10 @@ async def get_ocr_progress(file_id: str):
         from supabase import create_client, Client
         
         settings = get_settings()
+        # Convert AnyHttpUrl to string to avoid regex issues
+        supabase_url_str = str(settings.supabase_url) if hasattr(settings.supabase_url, '__str__') else settings.supabase_url
         supabase: Client = create_client(
-            settings.supabase_url,
+            supabase_url_str,
             settings.supabase_anon_key
         )
         
