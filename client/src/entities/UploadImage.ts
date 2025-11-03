@@ -7,9 +7,9 @@ export class UploadImage {
   publicUrl?: string | null;
   storagePath!: string;
   mimeType?: string | null;
-  order?: number;
+  order?: number | null;
   status: ProcessingStatus = ProcessingStatus.PENDING;
-  progress?: number;
+  progress?: number | null;
   extractedText?: string | null;
 
   constructor(init?: Partial<UploadImage>) {

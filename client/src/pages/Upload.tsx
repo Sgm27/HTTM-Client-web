@@ -80,6 +80,9 @@ const Upload = () => {
   }, [upload, previewUrls]);
 
   useEffect(() => {
+    // Guard against null upload
+    if (!upload) return;
+
     let timeoutId: number | undefined;
 
     const pollOcr = async () => {
