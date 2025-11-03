@@ -298,11 +298,25 @@ const StoryDetail = () => {
         </section>
 
         <section className="space-y-4">
-          <Card className="p-6">
-            <div className="prose prose-sm max-w-none whitespace-pre-wrap leading-relaxed text-foreground">
-              {story.content}
+          {story.images && story.images.length > 0 ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {story.images.map((image, index) => (
+                <Card key={image.id ?? `${index}-${image.storagePath}`} className="overflow-hidden">
+                  <img
+                    src={image.publicUrl ?? image.storagePath ?? ''}
+                    alt={`Trang ${index + 1}`}
+                    className="w-full object-cover"
+                  />
+                </Card>
+              ))}
             </div>
-          </Card>
+          ) : (
+            <Card className="p-6">
+              <div className="prose prose-sm max-w-none whitespace-pre-wrap leading-relaxed text-foreground">
+                {story.content}
+              </div>
+            </Card>
+          )}
         </section>
 
         <section className="space-y-4">

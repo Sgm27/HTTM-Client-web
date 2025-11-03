@@ -1,5 +1,6 @@
 import { Comment } from './Comment';
 import { ContentType, StoryStatus, Visibility } from './enums';
+import { UploadImage } from './UploadImage';
 
 export class Story {
   id!: string;
@@ -26,6 +27,7 @@ export class Story {
   };
   commentCount?: number;
   comments?: Comment[];
+  images?: UploadImage[];
 
   constructor(init?: Partial<Story>) {
     Object.assign(this, init);
@@ -50,6 +52,9 @@ export class Story {
     }
     if (typeof this.commentCount !== 'number') {
       this.commentCount = this.comments?.length ?? 0;
+    }
+    if (Array.isArray(init?.images)) {
+      this.images = init.images.map((image) => new UploadImage(image));
     }
   }
 

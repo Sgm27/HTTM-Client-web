@@ -26,3 +26,11 @@ class FileKind(str, Enum):
     CONTENT = "CONTENT"
     THUMBNAIL = "THUMBNAIL"
     AUDIO = "AUDIO"
+    IMAGE = "IMAGE"
+
+
+class ProcessingStatus(str, Enum):
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"

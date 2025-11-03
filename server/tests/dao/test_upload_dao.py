@@ -6,7 +6,7 @@ import pytest
 
 from src.dao.upload_dao import UploadDAO
 from src.dtos import UploadCreateRecord
-from src.entities import ContentType, StoryStatus, Visibility
+from src.entities import ContentType, StoryStatus, Visibility, ProcessingStatus
 
 
 def _sample_record() -> dict[str, object]:
@@ -21,8 +21,10 @@ def _sample_record() -> dict[str, object]:
         "content_file_id": "user-1/content.txt",
         "thumbnail_file_id": None,
         "status": "READY",
+        "processing_status": "COMPLETED",
         "progress": 100,
         "extracted_text": "hello",
+        "ocr_text": "hello",
         "error_reason": None,
         "created_at": now,
         "updated_at": now,
@@ -40,8 +42,10 @@ async def test_create_inserts_and_returns_upload() -> None:
         content_file_id="user-1/content.txt",
         thumbnail_file_id=None,
         status=StoryStatus.READY,
+        processing_status=ProcessingStatus.COMPLETED,
         progress=100,
         extracted_text="hello",
+        ocr_text="hello",
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
     )
@@ -102,6 +106,7 @@ async def test_mark_completed_updates_record() -> None:
     assert payload["status"] == StoryStatus.READY.value
     assert payload["progress"] == 100
     assert payload["error_reason"] is None
+    assert payload["processing_status"] == ProcessingStatus.COMPLETED.value
     update_mock.eq.assert_called_once_with("id", "upload-1")
     eq_mock.execute.assert_called_once()
 
@@ -126,5 +131,6 @@ async def test_mark_failed_updates_record() -> None:
     payload = args[0]
     assert payload["status"] == StoryStatus.FAILED.value
     assert payload["error_reason"] == "bad-file"
+    assert payload["processing_status"] == ProcessingStatus.FAILED.value
     update_mock.eq.assert_called_once_with("id", "upload-1")
     eq_mock.execute.assert_called_once()

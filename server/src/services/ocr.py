@@ -30,6 +30,19 @@ try:
 except Exception:  # pragma: no cover
     vintern = None  # type: ignore
 
+DEFAULT_OCR_PROMPT = """<image>
+Extract only the exact text visible in this comic/manga page.
+No descriptions, no summaries, no JSON, no quotes, no translation.
+Preserve original casing, punctuation, and line breaks.
+Reading direction = RTL (panel order as specified).
+Order: speech balloons → narration → SFX. Illegible → [illegible].
+If no text → EMPTY.
+Output only between:
+<RAW_TEXT_ONLY>
+...transcription...
+</RAW_TEXT_ONLY>"""
+
+
 class OCRService:
     def __init__(self) -> None:
         self._ocr_model = None
@@ -72,14 +85,16 @@ class OCRService:
         self._ocr_model = model
         self._ocr_tokenizer = tokenizer
         self._initialized = True
-
     async def run(self, file: UploadFile, question: str) -> dict[str, str]:
+        image_bytes = await file.read()
+        answer = await self.run_bytes(image_bytes, question)
+        return {"answer": answer}
+
+    async def run_bytes(self, image_bytes: bytes, question: Optional[str] = None) -> str:
         try:
             self.load()
         except RuntimeError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-        image_bytes = await file.read()
 
         if vintern is None or self._ocr_model is None or self._ocr_tokenizer is None or torch is None:
             raise HTTPException(status_code=500, detail="OCR model not available")
@@ -105,12 +120,14 @@ class OCRService:
             repetition_penalty=3.5,
         )
 
+        prompt = question or DEFAULT_OCR_PROMPT
+
         try:  
-            response = self._ocr_model.chat(self._ocr_tokenizer, pixel_values_tensor, question, generation_config)
+            response = self._ocr_model.chat(self._ocr_tokenizer, pixel_values_tensor, prompt, generation_config)
         except Exception as exc:  
             raise HTTPException(status_code=500, detail=f"OCR inference failed: {exc}") from exc
 
-        return {"answer": response}
+        return response
 
 
 ocr_service = OCRService()

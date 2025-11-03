@@ -1,4 +1,5 @@
-import { StoryStatus, ContentType, Visibility } from './enums';
+import { StoryStatus, ContentType, Visibility, ProcessingStatus } from './enums';
+import { UploadImage } from './UploadImage';
 
 export class Upload {
   id!: string;
@@ -12,11 +13,14 @@ export class Upload {
   contentUrl?: string | null;
   thumbnailUrl?: string | null;
   status!: StoryStatus;
+  processingStatus!: ProcessingStatus;
   progress?: number;
   content?: string;  // Extracted text content
+  ocrText?: string | null;
   errorReason?: string;
   createdAt!: Date;
   updatedAt!: Date;
+  images?: UploadImage[];
 
   constructor(init?: Partial<Upload>) {
     Object.assign(this, init);
@@ -29,11 +33,20 @@ export class Upload {
     if (typeof this.status === 'string') {
       this.status = this.status as StoryStatus;
     }
+    if (typeof this.processingStatus === 'string') {
+      this.processingStatus = this.processingStatus as ProcessingStatus;
+    }
+    if (!this.processingStatus) {
+      this.processingStatus = ProcessingStatus.PENDING;
+    }
     if (typeof this.contentType === 'string') {
       this.contentType = this.contentType as ContentType;
     }
     if (typeof this.visibility === 'string') {
       this.visibility = this.visibility as Visibility;
+    }
+    if (Array.isArray(init?.images)) {
+      this.images = init.images.map((image) => new UploadImage(image));
     }
   }
 
@@ -41,10 +54,12 @@ export class Upload {
     this.status = StoryStatus.READY;
     this.progress = 100;
     this.errorReason = undefined;
+    this.processingStatus = ProcessingStatus.COMPLETED;
   }
 
   markFailed(reason: string): void {
     this.status = StoryStatus.FAILED;
     this.errorReason = reason;
+    this.processingStatus = ProcessingStatus.FAILED;
   }
 }

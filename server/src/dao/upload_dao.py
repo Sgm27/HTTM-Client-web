@@ -5,7 +5,7 @@ from typing import Any, Optional, Sequence, TYPE_CHECKING
 
 from .base import DAO
 from ..dtos import UploadCreateRecord
-from ..entities import ContentType, StoryStatus, Upload, Visibility
+from ..entities import ContentType, StoryStatus, Upload, Visibility, ProcessingStatus
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from supabase import Client  # pylint: disable=unused-import  # noqa: F401
@@ -52,6 +52,15 @@ def _parse_status(value: str | None) -> StoryStatus:
         return StoryStatus.DRAFT
 
 
+def _parse_processing_status(value: str | None) -> ProcessingStatus:
+    if not value:
+        return ProcessingStatus.PENDING
+    try:
+        return ProcessingStatus(value.upper())
+    except ValueError:
+        return ProcessingStatus.PENDING
+
+
 class UploadDAO(DAO):
     def __init__(self, connection: Any) -> None:
         super().__init__(connection)
@@ -74,6 +83,7 @@ class UploadDAO(DAO):
             {
                 "status": StoryStatus.READY.value,
                 "progress": 100,
+                "processing_status": ProcessingStatus.COMPLETED.value,
                 "error_reason": None,
                 "updated_at": now,
             }
@@ -84,10 +94,36 @@ class UploadDAO(DAO):
         self._connection.table("uploads").update(
             {
                 "status": StoryStatus.FAILED.value,
+                "processing_status": ProcessingStatus.FAILED.value,
                 "error_reason": reason,
                 "updated_at": now,
             }
         ).eq("id", upload_id).execute()
+
+    async def update_processing(
+        self,
+        upload_id: str,
+        *,
+        status: ProcessingStatus | None = None,
+        progress: int | None = None,
+        extracted_text: str | None = None,
+        ocr_text: str | None = None,
+        story_status: StoryStatus | None = None,
+    ) -> None:
+        update: dict[str, object] = {"updated_at": datetime.utcnow().isoformat()}
+        if status is not None:
+            update["processing_status"] = status.value
+        if progress is not None:
+            update["progress"] = progress
+        if extracted_text is not None:
+            update["extracted_text"] = extracted_text
+        if ocr_text is not None:
+            update["ocr_text"] = ocr_text
+        if story_status is not None:
+            update["status"] = story_status.value
+
+        if len(update) > 1:  # avoid empty updates beyond updated_at
+            self._connection.table("uploads").update(update).eq("id", upload_id).execute()
 
     @staticmethod
     def _extract_single(response: Any) -> dict[str, Any]:
@@ -108,9 +144,11 @@ class UploadDAO(DAO):
             content_file_id=record.get("content_file_id"),
             thumbnail_file_id=record.get("thumbnail_file_id"),
             status=_parse_status(record.get("status")),
+            processing_status=_parse_processing_status(record.get("processing_status")),
             progress=record.get("progress"),
             error_reason=record.get("error_reason"),
             extracted_text=record.get("extracted_text"),
+            ocr_text=record.get("ocr_text"),
             created_at=_parse_datetime(record.get("created_at")),
             updated_at=_parse_datetime(record.get("updated_at")),
         )

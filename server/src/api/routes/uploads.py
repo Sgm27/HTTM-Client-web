@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from typing import Optional
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
+from typing import List, Optional
 
 from ...dtos import UploadFilePayload
 from ...services import UploadService, UploadServiceError, make_upload_request
@@ -15,12 +15,14 @@ def _get_upload_service() -> UploadService:
 
 @router.post("", response_model=None)
 async def create_upload(
+    background_tasks: BackgroundTasks,
     userId: str = Form(...),
     contentType: str = Form(...),
     visibility: str = Form(...),
     title: str = Form(...),
     description: Optional[str] = Form(None),
-    contentFile: UploadFile = File(...),
+    contentFile: Optional[UploadFile] = File(None),
+    contentFiles: Optional[List[UploadFile]] = File(None),
     thumbnailFile: Optional[UploadFile] = File(None),
     service: UploadService = Depends(_get_upload_service),
 ):
@@ -36,11 +38,24 @@ async def create_upload(
     except UploadServiceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
-    content_payload = UploadFilePayload(
-        filename=contentFile.filename or "upload",
-        content_type=contentFile.content_type,
-        data=await contentFile.read(),
-    )
+    files: List[UploadFile] = []
+    if contentFiles:
+        files.extend(contentFiles)
+    elif contentFile is not None:
+        files.append(contentFile)
+
+    if not files:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Vui lòng chọn ít nhất một file nội dung.")
+
+    content_payloads: List[UploadFilePayload] = []
+    for file in files:
+        content_payloads.append(
+            UploadFilePayload(
+                filename=file.filename or "upload",
+                content_type=file.content_type,
+                data=await file.read(),
+            )
+        )
 
     thumbnail_payload = None
     if thumbnailFile is not None:
@@ -51,7 +66,12 @@ async def create_upload(
         )
 
     try:
-        response = await service.create_upload(request, content_payload, thumbnail_payload)
+        response = await service.create_upload(
+            request,
+            content_payloads,
+            thumbnail_payload,
+            background_tasks=background_tasks,
+        )
     except UploadServiceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -70,3 +90,17 @@ async def get_upload(
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     return upload.to_api()
+
+
+@router.get("/{upload_id}/ocr-progress", response_model=None)
+async def get_upload_ocr_progress(
+    upload_id: str,
+    service: UploadService = Depends(_get_upload_service),
+):
+    """Get aggregated OCR progress for an upload"""
+    try:
+        progress = await service.get_ocr_progress(upload_id)
+    except UploadServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    return progress

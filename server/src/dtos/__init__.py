@@ -5,6 +5,7 @@ from .upload import (
     UploadError,
     UploadFilePayload,
     UploadRequest,
+    UploadImageCreateRecord,
 )
 from .story import CreateStoryRequest, GenerateAudioResponse, StoryResponse
 
@@ -15,6 +16,7 @@ __all__ = [
     "UploadDTO",
     "CreateUploadResponse",
     "UploadError",
+    "UploadImageCreateRecord",
     "CreateStoryRequest",
     "GenerateAudioResponse",
     "StoryResponse",

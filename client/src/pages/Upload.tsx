@@ -7,7 +7,7 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { UploadForm, UploadFormState } from '@/components/upload/UploadForm';
 import { ProgressBar } from '@/components/upload/ProgressBar';
 import { createStory, submitUpload, trackOcrProgress, getAudioStatus } from '@/lib/api/uploadApi';
-import { ContentType, StoryStatus, Upload as UploadEntity, Visibility } from '@/entities';
+import { ContentType, StoryStatus, Upload as UploadEntity, Visibility, ProcessingStatus, UploadImage } from '@/entities';
 import { Button } from '@/components/ui/button';
 
 const Upload = () => {
@@ -19,7 +19,7 @@ const Upload = () => {
     visibility: Visibility.PUBLIC,
     title: '',
     description: '',
-    contentFile: null,
+    contentFiles: [],
     thumbnailFile: null,
   });
   const [upload, setUpload] = useState<UploadEntity | null>(null);
@@ -28,6 +28,13 @@ const Upload = () => {
   const [createStoryStage, setCreateStoryStage] = useState<'idle' | 'creating' | 'generatingAudio'>(
     'idle',
   );
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const processingStatusLabel: Record<ProcessingStatus, string> = {
+    [ProcessingStatus.PENDING]: 'Chờ xử lý',
+    [ProcessingStatus.PROCESSING]: 'Đang xử lý',
+    [ProcessingStatus.COMPLETED]: 'Hoàn tất',
+    [ProcessingStatus.FAILED]: 'Lỗi',
+  };
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -36,46 +43,107 @@ const Upload = () => {
     }
   }, [authLoading, navigate, user]);
 
+  useEffect(() => {
+    const urls = formState.contentFiles.map((file) => URL.createObjectURL(file));
+    setPreviewUrls(urls);
+
+    return () => {
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [formState.contentFiles]);
+
   const isReadyToCreateStory = useMemo(() => {
-    return upload?.status === StoryStatus.READY || ocrProgress === 100;
-  }, [upload, ocrProgress]);
+    if (!upload) return false;
+    if (upload.status === StoryStatus.READY) {
+      return true;
+    }
+    return upload.processingStatus === ProcessingStatus.COMPLETED;
+  }, [upload]);
+
+  const displayImages = useMemo(() => {
+    if (upload?.images && upload.images.length > 0) {
+      return upload.images
+        .map((image, index) => ({
+          key: image.id ?? `${image.storagePath}-${index}`,
+          url: image.publicUrl ?? image.storagePath ?? '',
+          status: image.status,
+          progress: image.progress ?? 0,
+        }))
+        .filter((item) => Boolean(item.url));
+    }
+    return previewUrls.map((url, index) => ({
+      key: `${index}-${url}`,
+      url,
+      status: undefined,
+      progress: 0,
+    }));
+  }, [upload, previewUrls]);
 
   useEffect(() => {
     let timeoutId: number | undefined;
 
     const pollOcr = async () => {
-      if (!upload?.contentFileId) return;
       try {
-        const result = await trackOcrProgress(upload.contentFileId);
+        const result = await trackOcrProgress(upload.id);
         setOcrProgress(result.progress);
-        setOcrText(result.text);
+        const combinedText = result.ocrText ?? result.extractedText ?? result.text;
+        if (combinedText) {
+          setOcrText(combinedText);
+        }
 
-        if (result.progress >= 100) {
-          setUpload((prev) => {
-            if (!prev) return prev;
-            const updated = new UploadEntity({ ...prev });
-            updated.status = StoryStatus.READY;
-            updated.progress = 100;
-            return updated;
+        setUpload((prev) => {
+          if (!prev) return prev;
+          const next = new UploadEntity({
+            ...prev,
+            progress: result.progress,
+            status: (result.storyStatus ?? prev.status) as StoryStatus,
+            processingStatus: (result.status ?? prev.processingStatus) as ProcessingStatus,
+            ocrText: result.ocrText ?? combinedText ?? prev.ocrText,
+            content: combinedText ?? prev.content,
+            images: result.images
+              ? result.images.map((image) => new UploadImage(image))
+              : prev.images,
           });
+
+          if (next.processingStatus === ProcessingStatus.COMPLETED) {
+            next.status = StoryStatus.READY;
+            next.progress = 100;
+          } else if (next.processingStatus === ProcessingStatus.FAILED) {
+            next.status = StoryStatus.FAILED;
+          }
+
+          return next;
+        });
+
+        if (result.status === ProcessingStatus.COMPLETED || result.status === ProcessingStatus.FAILED) {
+          if (result.status === ProcessingStatus.COMPLETED && combinedText) {
+            setOcrProgress(100);
+            setOcrText(combinedText);
+          }
+          if (result.status === ProcessingStatus.FAILED) {
+            toast.error('Xử lý OCR thất bại. Vui lòng thử lại.');
+          }
           return;
         }
 
-        timeoutId = window.setTimeout(pollOcr, 3000);
+        timeoutId = window.setTimeout(pollOcr, 10000);
       } catch (error) {
         console.error('OCR polling error:', error);
         toast.error('Không thể cập nhật tiến độ OCR');
+        timeoutId = window.setTimeout(pollOcr, 10000);
       }
     };
 
-    // Only poll if status is OCR_IN_PROGRESS
-    if (upload?.status === StoryStatus.OCR_IN_PROGRESS && upload.contentFileId) {
+    if (
+      upload.processingStatus === ProcessingStatus.PROCESSING ||
+      upload.status === StoryStatus.OCR_IN_PROGRESS
+    ) {
       pollOcr();
-    }
-    // If status is READY and we have content from text file, set it directly
-    else if (upload?.status === StoryStatus.READY && upload.content) {
-      setOcrProgress(100);
-      setOcrText(upload.content);
+    } else if (upload.processingStatus === ProcessingStatus.COMPLETED) {
+      if (upload.ocrText || upload.content) {
+        setOcrProgress(100);
+        setOcrText(upload.ocrText ?? upload.content);
+      }
     }
 
     return () => {
@@ -97,8 +165,8 @@ const Upload = () => {
       return;
     }
 
-    if (!formState.contentFile) {
-      toast.error('Vui lòng chọn file nội dung');
+    if (formState.contentFiles.length === 0) {
+      toast.error('Vui lòng chọn ít nhất một file nội dung');
       return;
     }
 
@@ -111,12 +179,13 @@ const Upload = () => {
         visibility: formState.visibility,
         title: formState.title,
         description: formState.description,
-        contentFile: formState.contentFile,
+        contentFiles: formState.contentFiles,
         thumbnailFile: formState.thumbnailFile ?? undefined,
       });
 
       setUpload(createdUpload);
       setOcrProgress(createdUpload.progress ?? 0);
+      setOcrText(createdUpload.ocrText ?? createdUpload.content);
       toast.success('Đã gửi yêu cầu xử lý nội dung');
     } catch (error) {
       console.error('Upload error:', error);
@@ -246,10 +315,32 @@ const Upload = () => {
           <UploadForm state={formState} onStateChange={handleStateChange} onSubmit={handleSubmit} loading={loading} />
 
           {upload && (
-            <div className="space-y-4">
+            <div className="space-y-6">
+              {displayImages.length > 0 && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {displayImages.map((image, index) => (
+                    <div key={image.key ?? index} className="space-y-2">
+                      <div className="overflow-hidden rounded-md border bg-muted/40">
+                        <img
+                          src={image.url}
+                          alt={`Preview ${index + 1}`}
+                          className="h-64 w-full object-cover"
+                        />
+                      </div>
+                      {image.status && (
+                        <div className="text-xs text-muted-foreground space-y-1">
+                          <p>Trạng thái: {processingStatusLabel[image.status]}</p>
+                          <p>Tiến độ: {image.progress ?? 0}%</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {upload.thumbnailUrl && (
                 <div className="flex flex-col items-start space-y-2">
-                  <p className="text-sm text-muted-foreground">Thumbnail d� t?i l�n</p>
+                  <p className="text-sm text-muted-foreground">Thumbnail đã tải lên</p>
                   <img
                     src={upload.thumbnailUrl}
                     alt="Uploaded thumbnail preview"
@@ -257,22 +348,29 @@ const Upload = () => {
                   />
                 </div>
               )}
+
               <ProgressBar
                 progress={ocrProgress}
                 statusLabel={
-                  upload.status === StoryStatus.OCR_IN_PROGRESS
+                  upload.processingStatus === ProcessingStatus.PROCESSING
                     ? 'Đang xử lý'
-                    : upload.status === StoryStatus.FAILED
+                    : upload.processingStatus === ProcessingStatus.FAILED
                       ? 'Lỗi OCR'
                       : 'Hoàn tất'
                 }
               />
+
+              {upload.processingStatus === ProcessingStatus.FAILED && (
+                <p className="text-sm text-destructive">Hệ thống không thể trích xuất văn bản từ ảnh. Vui lòng thử lại.</p>
+              )}
+
               {ocrText && (
                 <div className="rounded-lg border p-4 bg-muted/30">
                   <p className="text-sm text-muted-foreground">Trích xuất trước:</p>
                   <p className="mt-2 whitespace-pre-wrap text-sm">{ocrText}</p>
                 </div>
               )}
+
               <div className="flex justify-end">
                 <Button
                   onClick={handleCreateStory}

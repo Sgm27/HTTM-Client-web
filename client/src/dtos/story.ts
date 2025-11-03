@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { StoryStatus, ContentType, Visibility } from '@/entities';
 import { ttsOptionSchema } from './tts';
+import { uploadImageSchema } from './upload';
 
 export const createStoryRequestSchema = z.object({
   uploadId: z.string(),
@@ -44,6 +45,7 @@ export const storySchema = z.object({
   author: storyCommentAuthorSchema.optional(),
   commentCount: z.number().default(0),
   comments: z.array(storyCommentSchema).default([]),
+  images: z.array(uploadImageSchema).optional(),
 });
 
 export type StoryDTO = z.infer<typeof storySchema>;

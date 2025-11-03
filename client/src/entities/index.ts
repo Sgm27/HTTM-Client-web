@@ -4,3 +4,4 @@ export * from './Upload';
 export * from './Story';
 export * from './Comment';
 export * from './User';
+export * from './UploadImage';

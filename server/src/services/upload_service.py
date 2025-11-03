@@ -2,25 +2,28 @@ from __future__ import annotations
 
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, Sequence
 from urllib.parse import quote
 
-from fastapi import status
+from fastapi import BackgroundTasks, status
 
 from supabase import Client, create_client
 
-from ..dao import UploadDAO
+from ..dao import UploadDAO, UploadImageDAO
 from ..dtos import (
     CreateUploadResponse,
     UploadCreateRecord,
     UploadDTO,
     UploadFilePayload,
     UploadRequest,
+    UploadImageCreateRecord,
 )
-from ..entities import ContentType, StoryStatus, Visibility
+from ..entities import ContentType, StoryStatus, Visibility, ProcessingStatus, UploadImage
 from ..utils.config import Settings
 from .document_extractor import DocumentExtractor
+from .ocr import ocr_service, DEFAULT_OCR_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +35,21 @@ class UploadServiceError(Exception):
         self.status_code = status_code
 
 
+@dataclass(slots=True)
+class _PreparedFile:
+    payload: UploadFilePayload
+    storage_path: str
+    public_url: str | None
+    is_image: bool
+    order_index: int
+
+
 class UploadService:
     def __init__(
         self,
         settings: Settings,
         upload_dao: UploadDAO | None = None,
+        upload_image_dao: UploadImageDAO | None = None,
         service_client: Client | None = None,
         public_client: Client | None = None,
     ) -> None:
@@ -47,35 +60,49 @@ class UploadService:
         self._service_client: Client = service_client or create_client(supabase_url, service_key)
         self._public_client: Client = public_client or create_client(supabase_url, public_key)
         self._upload_dao: UploadDAO = upload_dao or UploadDAO(self._service_client)
+        self._upload_image_dao: UploadImageDAO = upload_image_dao or UploadImageDAO(self._service_client)
         self._settings = settings
 
     async def create_upload(
         self,
         request: UploadRequest,
-        content_file: UploadFilePayload,
+        content_files: Sequence[UploadFilePayload],
         thumbnail_file: Optional[UploadFilePayload] = None,
+        background_tasks: BackgroundTasks | None = None,
     ) -> CreateUploadResponse:
-        content_path = self._build_object_path(request.user_id, content_file.filename)
-        thumbnail_path = (
-            self._build_object_path(request.user_id, thumbnail_file.filename)
-            if thumbnail_file and thumbnail_file.filename
-            else None
-        )
+        if not content_files:
+            raise UploadServiceError("No content files provided", status.HTTP_400_BAD_REQUEST)
 
         bucket = self._service_client.storage.from_("uploads")
         uploaded_paths: list[str] = []
 
         try:
-            bucket.upload(
-                content_path,
-                content_file.data,
-                {"content-type": content_file.content_type or "application/octet-stream"},
-            )
-            uploaded_paths.append(content_path)
-            content_url = self._resolve_public_url(content_path)
+            prepared_files: list[_PreparedFile] = []
+            for index, payload in enumerate(content_files):
+                content_path = self._build_object_path(request.user_id, payload.filename)
+                bucket.upload(
+                    content_path,
+                    payload.data,
+                    {"content-type": payload.content_type or "application/octet-stream"},
+                )
+                uploaded_paths.append(content_path)
+                prepared_files.append(
+                    _PreparedFile(
+                        payload=payload,
+                        storage_path=content_path,
+                        public_url=self._resolve_public_url(content_path),
+                        is_image=self._is_image_file(payload),
+                        order_index=index,
+                    )
+                )
+
+            if not prepared_files:
+                raise UploadServiceError("Không thể chuẩn bị file tải lên", status.HTTP_400_BAD_REQUEST)
 
             thumbnail_url = None
-            if thumbnail_path and thumbnail_file:
+            thumbnail_path = None
+            if thumbnail_file and thumbnail_file.filename:
+                thumbnail_path = self._build_object_path(request.user_id, thumbnail_file.filename)
                 bucket.upload(
                     thumbnail_path,
                     thumbnail_file.data,
@@ -84,31 +111,71 @@ class UploadService:
                 uploaded_paths.append(thumbnail_path)
                 thumbnail_url = self._resolve_public_url(thumbnail_path)
 
-            status_value, progress, extracted_text = self._derive_initial_status(
-                content_file=content_file,
+            story_status, processing_status, progress, extracted_text, ocr_text = self._derive_initial_state(
+                prepared_files=prepared_files,
                 user_id=request.user_id,
             )
 
             now = datetime.utcnow()
+            primary_path = prepared_files[0].storage_path
             record = UploadCreateRecord(
                 user_id=request.user_id,
                 content_type=request.content_type,
                 visibility=request.visibility,
                 title=request.title,
                 description=request.description,
-                content_file_id=content_path,
+                content_file_id=primary_path,
                 thumbnail_file_id=thumbnail_path,
-                status=status_value,
+                status=story_status,
+                processing_status=processing_status,
                 progress=progress,
                 extracted_text=extracted_text,
+                ocr_text=ocr_text,
                 created_at=now,
                 updated_at=now,
             )
 
             upload = await self._upload_dao.create(record)
-            dto = UploadDTO.from_entity(upload, content_url=content_url, thumbnail_url=thumbnail_url)
+
+            image_prepared = [item for item in prepared_files if item.is_image]
+            image_records: list[UploadImage] = []
+
+            if image_prepared:
+                create_records = [
+                    UploadImageCreateRecord(
+                        upload_id=upload.id,
+                        storage_path=item.storage_path,
+                        mime_type=item.payload.content_type or "image/jpeg",
+                        file_size=len(item.payload.data),
+                        order_index=item.order_index,
+                        public_url=item.public_url,
+                        status=ProcessingStatus.PROCESSING if processing_status == ProcessingStatus.PROCESSING else ProcessingStatus.PENDING,
+                        progress=0,
+                    )
+                    for item in image_prepared
+                ]
+                image_records = await self._upload_image_dao.create_many(create_records)
+
+                if processing_status == ProcessingStatus.PROCESSING and self._settings.ocr_service_enabled:
+                    if background_tasks:
+                        for prepared, image in zip(image_prepared, image_records):
+                            background_tasks.add_task(self._process_image_ocr, upload.id, image.id, prepared)
+                    else:
+                        for prepared, image in zip(image_prepared, image_records):
+                            await self._process_image_ocr(upload.id, image.id, prepared)
+
+            content_url = prepared_files[0].public_url
+            dto = UploadDTO.from_entity(
+                upload,
+                content_url=content_url,
+                thumbnail_url=thumbnail_url,
+                images=image_records,
+            )
             return CreateUploadResponse(upload=dto)
 
+        except UploadServiceError:
+            self._rollback_storage(bucket, uploaded_paths)
+            raise
         except Exception as exc:  # pragma: no cover - defensive guard
             logger.exception("Failed to create upload: %s", exc, exc_info=exc)
             self._rollback_storage(bucket, uploaded_paths)
@@ -124,7 +191,39 @@ class UploadService:
 
         content_url = self._resolve_public_url(upload.content_file_id)
         thumbnail_url = self._resolve_public_url(upload.thumbnail_file_id)
-        return UploadDTO.from_entity(upload, content_url=content_url, thumbnail_url=thumbnail_url)
+        images = await self._upload_image_dao.list_by_upload(upload_id)
+        return UploadDTO.from_entity(upload, content_url=content_url, thumbnail_url=thumbnail_url, images=images)
+
+    async def get_ocr_progress(self, upload_id: str) -> dict[str, object]:
+        upload = await self._upload_dao.find_by_id(upload_id)
+        if upload is None:
+            raise UploadServiceError(
+                message=f"Upload với id {upload_id} không tồn tại",
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+
+        images = await self._upload_image_dao.list_by_upload(upload_id)
+        return {
+            "status": upload.processing_status.value,
+            "storyStatus": upload.status.value,
+            "progress": upload.progress or 0,
+            "ocrText": upload.ocr_text,
+            "extractedText": upload.extracted_text,
+            "images": [
+                {
+                    "id": image.id,
+                    "uploadId": image.upload_id,
+                    "storyId": image.story_id,
+                    "status": image.status.value,
+                    "progress": image.progress,
+                    "publicUrl": image.public_url,
+                    "storagePath": image.storage_path,
+                    "order": image.order_index,
+                    "extractedText": image.extracted_text,
+                }
+                for image in images
+            ],
+        }
 
     def _resolve_public_url(self, path: Optional[str]) -> Optional[str]:
         if not path:
@@ -158,35 +257,175 @@ class UploadService:
         safe_name = filename or "upload"
         return f"{user_id}/{uuid.uuid4()}_{safe_name}"
 
-    def _derive_initial_status(
+    def _derive_initial_state(
         self,
         *,
-        content_file: UploadFilePayload,
+        prepared_files: Sequence[_PreparedFile],
         user_id: str,
-    ) -> tuple[StoryStatus, int, Optional[str]]:
-        filename = content_file.filename or ""
-        extension = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+    ) -> tuple[StoryStatus, ProcessingStatus, int, Optional[str], Optional[str]]:
+        image_files = [item for item in prepared_files if item.is_image]
+        non_image_files = [item for item in prepared_files if not item.is_image]
 
-        text_extensions = {"txt", "text"}
-        document_extensions = {"pdf", "docx", "doc"}
-        image_extensions = {"jpg", "jpeg", "png", "gif", "bmp", "webp"}
+        if image_files:
+            if non_image_files:
+                raise UploadServiceError(
+                    "Không hỗ trợ tải đồng thời ảnh và tài liệu trong cùng một lần upload.",
+                    status.HTTP_400_BAD_REQUEST,
+                )
+            if not self._settings.ocr_service_enabled:
+                raise UploadServiceError(
+                    "OCR service đang tắt. Vui lòng bật OCR hoặc tải file văn bản.",
+                    status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+            return (
+                StoryStatus.OCR_IN_PROGRESS,
+                ProcessingStatus.PROCESSING,
+                0,
+                None,
+                None,
+            )
 
-        if extension in text_extensions or extension in document_extensions:
-            try:
-                extracted_text = DocumentExtractor.extract_text(content_file.data, filename)
-            except Exception as exc:  # pragma: no cover - library errors
-                logger.warning("Error extracting text for user %s: %s", user_id, exc)
-                return StoryStatus.FAILED, 0, None
+        primary = prepared_files[0]
+        if len(prepared_files) > 1:
+            raise UploadServiceError(
+                "Hiện chỉ hỗ trợ một file văn bản mỗi lần tải lên.",
+                status.HTTP_400_BAD_REQUEST,
+            )
 
-            if extracted_text and extracted_text.strip():
-                return StoryStatus.READY, 100, extracted_text
-            logger.info("No text extracted from %s for user %s", filename, user_id)
-            return StoryStatus.FAILED, 0, None
+        if not self._is_document_file(primary.payload):
+            raise UploadServiceError(
+                "Định dạng file không được hỗ trợ cho việc trích xuất văn bản.",
+                status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            )
 
-        if extension in image_extensions and self._settings.ocr_service_enabled:
-            return StoryStatus.OCR_IN_PROGRESS, 0, None
+        filename = primary.payload.filename or "upload"
+        try:
+            extracted_text = DocumentExtractor.extract_text(primary.payload.data, filename)
+        except Exception as exc:  # pragma: no cover - library errors
+            logger.warning("Error extracting text for user %s: %s", user_id, exc)
+            raise UploadServiceError(
+                "Không thể trích xuất văn bản từ file đã tải lên.",
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+            ) from exc
 
-        return StoryStatus.DRAFT, 0, None
+        if not extracted_text or not extracted_text.strip():
+            raise UploadServiceError(
+                "File không chứa nội dung văn bản hợp lệ.",
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+
+        cleaned = extracted_text.strip()
+        return (
+            StoryStatus.READY,
+            ProcessingStatus.COMPLETED,
+            100,
+            cleaned,
+            cleaned,
+        )
+
+    @staticmethod
+    def _is_image_file(payload: UploadFilePayload) -> bool:
+        if payload.content_type and payload.content_type.lower().startswith("image/"):
+            return True
+        filename = (payload.filename or "").lower()
+        if "." in filename:
+            extension = filename.rsplit(".", 1)[-1]
+            return extension in {"jpg", "jpeg", "png", "gif", "bmp", "webp", "tif", "tiff", "heic"}
+        return False
+
+    @staticmethod
+    def _is_document_file(payload: UploadFilePayload) -> bool:
+        if payload.content_type:
+            lowered = payload.content_type.lower()
+            if lowered in {"text/plain", "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}:
+                return True
+        filename = (payload.filename or "").lower()
+        if "." not in filename:
+            return False
+        extension = filename.rsplit(".", 1)[-1]
+        return extension in {"txt", "text", "pdf", "doc", "docx"}
+
+    async def _process_image_ocr(self, upload_id: str, image_id: str, prepared: _PreparedFile) -> None:
+        try:
+            await self._upload_image_dao.update_image(
+                image_id,
+                status=ProcessingStatus.PROCESSING,
+                progress=5,
+            )
+
+            text = await self._run_ocr_bytes(prepared.payload)
+
+            await self._upload_image_dao.update_image(
+                image_id,
+                status=ProcessingStatus.COMPLETED,
+                progress=100,
+                extracted_text=text.strip() if text else None,
+            )
+
+        except Exception as exc:  # pragma: no cover - defensive guard
+            logger.exception("OCR processing failed for upload %s image %s: %s", upload_id, image_id, exc)
+            await self._upload_image_dao.update_image(
+                image_id,
+                status=ProcessingStatus.FAILED,
+                progress=0,
+            )
+            await self._upload_dao.update_processing(
+                upload_id,
+                status=ProcessingStatus.FAILED,
+                story_status=StoryStatus.FAILED,
+            )
+            return
+
+        await self._refresh_upload_progress(upload_id)
+
+    async def _refresh_upload_progress(self, upload_id: str) -> None:
+        images = await self._upload_image_dao.list_by_upload(upload_id)
+        if not images:
+            return
+
+        total = len(images)
+        completed = sum(1 for image in images if image.status == ProcessingStatus.COMPLETED)
+        failed = any(image.status == ProcessingStatus.FAILED for image in images)
+
+        if failed:
+            status_value = ProcessingStatus.FAILED
+            story_status = StoryStatus.FAILED
+        elif completed == total:
+            status_value = ProcessingStatus.COMPLETED
+            story_status = StoryStatus.READY
+        else:
+            status_value = ProcessingStatus.PROCESSING
+            story_status = StoryStatus.OCR_IN_PROGRESS
+
+        progress = int(round((completed / total) * 100)) if total else 0
+        combined_text = self._combine_extracted_text(images)
+
+        await self._upload_dao.update_processing(
+            upload_id,
+            status=status_value,
+            progress=progress,
+            extracted_text=combined_text,
+            ocr_text=combined_text,
+            story_status=story_status,
+        )
+
+    async def _run_ocr_bytes(self, payload: UploadFilePayload) -> str:
+        if not self._settings.ocr_service_enabled:
+            raise UploadServiceError("OCR service is disabled", status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        result = await ocr_service.run_bytes(payload.data, DEFAULT_OCR_PROMPT)
+        if isinstance(result, dict):
+            answer = result.get("answer") or ""
+        else:
+            answer = str(result or "")
+        return answer.strip()
+
+    @staticmethod
+    def _combine_extracted_text(images: Sequence[UploadImage]) -> Optional[str]:
+        pieces = [image.extracted_text.strip() for image in images if image.extracted_text]
+        if not pieces:
+            return None
+        return "\n\n".join(pieces)
 
     def _rollback_storage(self, bucket: Any, paths: Iterable[str]) -> None:
         if not paths:

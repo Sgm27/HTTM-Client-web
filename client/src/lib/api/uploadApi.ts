@@ -18,7 +18,7 @@ export type SubmitUploadParams = {
   visibility: Visibility;
   title: string;
   description?: string;
-  contentFile: File;
+  contentFiles: File[];
   thumbnailFile?: File;
 };
 
@@ -50,7 +50,9 @@ export async function submitUpload(params: SubmitUploadParams): Promise<Upload> 
   if (params.description) {
     formData.append('description', params.description);
   }
-  formData.append('contentFile', params.contentFile);
+  params.contentFiles.forEach((file) => {
+    formData.append('contentFiles', file);
+  });
   if (params.thumbnailFile) {
     formData.append('thumbnailFile', params.thumbnailFile);
   }
@@ -65,8 +67,8 @@ export async function submitUpload(params: SubmitUploadParams): Promise<Upload> 
   return new Upload(data.upload);
 }
 
-export async function trackOcrProgress(fileId: string): Promise<OCRProgress> {
-  const response = await fetch(`${API_BASE}/ocr/progress/${fileId}`);
+export async function trackOcrProgress(uploadId: string): Promise<OCRProgress> {
+  const response = await fetch(`${API_BASE}/uploads/${uploadId}/ocr-progress`);
   return handleJsonResponse(response, ocrProgressSchema);
 }
 

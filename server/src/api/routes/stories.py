@@ -172,6 +172,31 @@ async def get_story(
         is_public = story_data.get("is_public", True)
         visibility = "PUBLIC" if is_public else "PRIVATE"
 
+        images_response = (
+            supabase.table("upload_images")
+            .select("id, public_url, storage_path, mime_type, order_index, status, progress, extracted_text, upload_id")
+            .eq("story_id", story_id)
+            .order("order_index")
+            .execute()
+        )
+
+        image_items = []
+        for image in images_response.data or []:
+            image_items.append(
+                {
+                    "id": image.get("id"),
+                    "storyId": story_id,
+                    "uploadId": image.get("upload_id"),
+                    "publicUrl": image.get("public_url"),
+                    "storagePath": image.get("storage_path"),
+                    "mimeType": image.get("mime_type"),
+                    "order": image.get("order_index"),
+                    "status": (image.get("status") or "PENDING").upper(),
+                    "progress": image.get("progress") or 0,
+                    "extractedText": image.get("extracted_text"),
+                }
+            )
+
         transformed = {
             "id": story_data.get("id"),
             "uploadId": story_data.get("upload_id") or "",
@@ -192,6 +217,7 @@ async def get_story(
             "author": author_profile,
             "commentCount": comment_count,
             "comments": comments,
+            "images": image_items,
         }
 
         return transformed
@@ -232,8 +258,7 @@ async def create_story(request: CreateStoryRequest, background_tasks: Background
         visibility = upload_data.get("visibility", "PUBLIC")
         is_public = visibility.upper() == "PUBLIC"
         
-        extracted_text = upload_data.get("extracted_text", "") or ""
-        has_content = bool(extracted_text.strip())
+        combined_text = (upload_data.get("ocr_text") or upload_data.get("extracted_text") or "").strip()
         initial_audio_status = "PENDING"
 
         # Get thumbnail URL if thumbnail_file_id exists
@@ -272,7 +297,7 @@ async def create_story(request: CreateStoryRequest, background_tasks: Background
             "upload_id": request.uploadId,
             "title": upload_data.get("title", ""),
             "description": upload_data.get("description"),
-            "content": upload_data.get("extracted_text", ""),
+            "content": combined_text,
             "author_id": upload_data.get("user_id"),
             "content_type": upload_data.get("content_type", "TEXT"),
             "is_public": is_public,
@@ -308,6 +333,34 @@ async def create_story(request: CreateStoryRequest, background_tasks: Background
                 service_role_key=settings.supabase_service_role_key
             )
             story_data["audio_status"] = "PROCESSING"
+        else:
+            story_data["audio_status"] = story_data.get("audio_status") or "PENDING"
+
+        try:
+            supabase.table("upload_images").update({"story_id": story_id}).eq("upload_id", request.uploadId).execute()
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Failed to assign upload images to story %s: %s", story_id, exc)
+
+        images_response = supabase.table("upload_images").select(
+            "id, public_url, storage_path, mime_type, order_index, status, progress, extracted_text"
+        ).eq("upload_id", request.uploadId).order("order_index").execute()
+
+        image_items = []
+        for image in images_response.data or []:
+            image_items.append(
+                {
+                    "id": image.get("id"),
+                    "storyId": story_id,
+                    "uploadId": request.uploadId,
+                    "publicUrl": image.get("public_url"),
+                    "storagePath": image.get("storage_path"),
+                    "mimeType": image.get("mime_type"),
+                    "order": image.get("order_index"),
+                    "status": (image.get("status") or "PENDING").upper(),
+                    "progress": image.get("progress") or 0,
+                    "extractedText": image.get("extracted_text"),
+                }
+            )
         
         content_type_raw = story_data.get("content_type")
         if content_type_raw:
@@ -357,6 +410,7 @@ async def create_story(request: CreateStoryRequest, background_tasks: Background
             "author": author_profile,
             "commentCount": 0,
             "comments": [],
+            "images": image_items,
         }
 
         return transformed

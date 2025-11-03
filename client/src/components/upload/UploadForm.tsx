@@ -12,7 +12,7 @@ export interface UploadFormState {
   visibility: Visibility;
   title: string;
   description: string;
-  contentFile: File | null;
+  contentFiles: File[];
   thumbnailFile: File | null;
 }
 
@@ -25,8 +25,8 @@ interface UploadFormProps {
 
 export const UploadForm = ({ state, onStateChange, onSubmit, loading }: UploadFormProps) => {
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] ?? null;
-    onStateChange({ contentFile: file });
+    const files = event.target.files ? Array.from(event.target.files) : [];
+    onStateChange({ contentFiles: files });
   };
 
   const handleThumbnailChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -101,16 +101,23 @@ export const UploadForm = ({ state, onStateChange, onSubmit, loading }: UploadFo
           </div>
 
           <div>
-            <Label htmlFor="contentFile">File nội dung</Label>
+            <Label htmlFor="contentFiles">File nội dung</Label>
             <Input
-              id="contentFile"
-              name="contentFile"
+              id="contentFiles"
+              name="contentFiles"
               type="file"
               accept=".txt,.pdf,.doc,.docx,.png,.jpg,.jpeg,.webp"
+              multiple
               onChange={handleFileChange}
               required
             />
-            {state.contentFile && <p className="text-sm text-muted-foreground mt-2">{state.contentFile.name}</p>}
+            {state.contentFiles.length > 0 && (
+              <ul className="text-sm text-muted-foreground mt-2 space-y-1">
+                {state.contentFiles.map((file) => (
+                  <li key={file.name}>{file.name}</li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div>

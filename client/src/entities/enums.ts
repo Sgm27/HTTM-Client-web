@@ -17,8 +17,16 @@ export enum StoryStatus {
   FAILED = 'FAILED',
 }
 
+export enum ProcessingStatus {
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+}
+
 export enum FileKind {
   CONTENT = 'CONTENT',
   THUMBNAIL = 'THUMBNAIL',
   AUDIO = 'AUDIO',
+  IMAGE = 'IMAGE',
 }

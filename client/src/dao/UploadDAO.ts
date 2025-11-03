@@ -13,7 +13,7 @@ export interface CreateUploadInput {
   visibility: Visibility;
   title: string;
   description?: string;
-  contentFile: File;
+  contentFiles: File[];
   thumbnailFile?: File;
 }
 
@@ -27,7 +27,9 @@ export class UploadDAO extends DAO<ApiClient> {
     if (input.description) {
       form.append('description', input.description);
     }
-    form.append('contentFile', input.contentFile);
+    input.contentFiles.forEach((file) => {
+      form.append('contentFiles', file);
+    });
     if (input.thumbnailFile) {
       form.append('thumbnailFile', input.thumbnailFile);
     }
