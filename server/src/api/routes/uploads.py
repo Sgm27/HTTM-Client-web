@@ -13,6 +13,7 @@ def _get_upload_service() -> UploadService:
     return UploadService(settings)
 
 
+# Step Upload - 4: Accept upload payload and enqueue processing
 @router.post("", response_model=None)
 async def create_upload(
     background_tasks: BackgroundTasks,
@@ -92,6 +93,7 @@ async def get_upload(
     return upload.to_api()
 
 
+# Step Upload - 6: Report OCR progress back to frontend
 @router.get("/{upload_id}/ocr-progress", response_model=None)
 async def get_upload_ocr_progress(
     upload_id: str,

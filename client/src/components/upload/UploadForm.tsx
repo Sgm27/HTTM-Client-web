@@ -23,6 +23,7 @@ interface UploadFormProps {
   loading: boolean;
 }
 
+// Step Upload - 2: Collect form inputs before submitting upload
 export const UploadForm = ({ state, onStateChange, onSubmit, loading }: UploadFormProps) => {
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files ? Array.from(event.target.files) : [];

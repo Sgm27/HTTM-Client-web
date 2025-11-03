@@ -41,6 +41,7 @@ async function handleJsonResponse<T extends z.ZodTypeAny>(
   return parsed.data;
 }
 
+// Step Upload - 3: Send upload payload to backend
 export async function submitUpload(params: SubmitUploadParams): Promise<Upload> {
   const formData = new FormData();
   formData.append('userId', params.userId);
@@ -67,11 +68,13 @@ export async function submitUpload(params: SubmitUploadParams): Promise<Upload> 
   return new Upload(data.upload);
 }
 
+// Step Upload - 6: Poll backend for OCR progress updates
 export async function trackOcrProgress(uploadId: string): Promise<OCRProgress> {
   const response = await fetch(`${API_BASE}/uploads/${uploadId}/ocr-progress`);
   return handleJsonResponse(response, ocrProgressSchema);
 }
 
+// Step Upload - 7: Request story creation from upload
 export async function createStory(uploadId: string): Promise<Story> {
   const response = await fetch(`${API_BASE}/stories`, {
     method: 'POST',
@@ -117,6 +120,7 @@ const audioStatusResponseSchema = z.object({
   audioUrl: z.string().optional().nullable(),
 });
 
+// Step Upload - 8: Poll audio generation status
 export async function getAudioStatus(storyId: string): Promise<AudioStatusResponse> {
   const response = await fetch(`${API_BASE}/stories/${storyId}/audio-status`);
   const data = await handleJsonResponse(response, audioStatusResponseSchema);

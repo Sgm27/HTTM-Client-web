@@ -63,6 +63,7 @@ class UploadService:
         self._upload_image_dao: UploadImageDAO = upload_image_dao or UploadImageDAO(self._service_client)
         self._settings = settings
 
+    # Step Upload - 5: Persist upload metadata and queue OCR processing
     async def create_upload(
         self,
         request: UploadRequest,

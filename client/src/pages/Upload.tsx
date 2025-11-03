@@ -10,6 +10,7 @@ import { createStory, submitUpload, trackOcrProgress, getAudioStatus } from '@/l
 import { ContentType, StoryStatus, Upload as UploadEntity, Visibility, ProcessingStatus, UploadImage } from '@/entities';
 import { Button } from '@/components/ui/button';
 
+// Step Upload - 1: Initialize and guard the upload page
 const Upload = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useUserRole();
@@ -93,6 +94,7 @@ const Upload = () => {
     return false;
   }, [upload, displayImages]);
 
+  // Step Upload - 6: Poll OCR progress until processing completes
   useEffect(() => {
     if (!upload) return;
 
@@ -173,6 +175,7 @@ const Upload = () => {
     setFormState((prev) => ({ ...prev, ...next }));
   };
 
+  // Step Upload - 3: Gather form state and submit upload request
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -211,6 +214,7 @@ const Upload = () => {
     }
   };
 
+  // Step Upload - 7: Trigger story creation once upload is ready
   const handleCreateStory = async () => {
     if (!upload) return;
     setCreateStoryStage('creating');
@@ -228,6 +232,7 @@ const Upload = () => {
         const maxAttempts = 600; // Maximum 100 minutes (60 * 10s)
         let attempts = 0;
 
+        // Step Upload - 8: Poll audio generation status until completion
         const pollAudioStatus = async (): Promise<void> => {
           while (attempts < maxAttempts) {
             attempts++;

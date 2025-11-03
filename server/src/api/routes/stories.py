@@ -7,6 +7,7 @@ from uuid import uuid4
 router = APIRouter(prefix="/stories", tags=["stories"])
 
 
+# Step Upload - 8: Background task generating story audio files
 async def generate_audio_background(story_id: str, story_content: str, author_id: str, supabase_url: str, service_role_key: str):
     """
     Background task to generate audio for a story.
@@ -231,6 +232,7 @@ async def get_story(
         )
 
 
+# Step Upload - 7: Publish a story record sourced from upload data
 @router.post("", response_model=None)
 async def create_story(request: CreateStoryRequest, background_tasks: BackgroundTasks):
     """Create a new story from upload"""
