@@ -44,7 +44,10 @@ const Upload = () => {
   }, [authLoading, navigate, user]);
 
   useEffect(() => {
-    const urls = formState.contentFiles.map((file) => URL.createObjectURL(file));
+    // Only create preview URLs for image files
+    const urls = formState.contentFiles
+      .filter((file) => file.type.startsWith('image/'))
+      .map((file) => URL.createObjectURL(file));
     setPreviewUrls(urls);
 
     return () => {
@@ -71,16 +74,26 @@ const Upload = () => {
         }))
         .filter((item) => Boolean(item.url));
     }
-    return previewUrls.map((url, index) => ({
-      key: `${index}-${url}`,
-      url,
-      status: undefined,
-      progress: 0,
-    }));
+    // Only show previews for image files
+    if (previewUrls.length > 0) {
+      return previewUrls.map((url, index) => ({
+        key: `${index}-${url}`,
+        url,
+        status: undefined,
+        progress: 0,
+      }));
+    }
+    return [];
   }, [upload, previewUrls]);
 
+  const needsOcr = useMemo(() => {
+    if (!upload) return false;
+    if (displayImages.length > 0) return true;
+    if (upload.processingStatus === ProcessingStatus.PROCESSING) return true;
+    return false;
+  }, [upload, displayImages]);
+
   useEffect(() => {
-    // Guard against null upload
     if (!upload) return;
 
     let timeoutId: number | undefined;
@@ -203,18 +216,14 @@ const Upload = () => {
     setCreateStoryStage('creating');
     
     try {
-      // Step 1: Create story (this will start audio generation in background)
       const story = await createStory(upload.id);
       
-      // Step 2: Check if audio is already available or needs generation
       const audioStatus = story.audioStatus;
 
-      // If audio is not completed, start polling
       if (audioStatus === 'PENDING' || audioStatus === 'PROCESSING') {
         setCreateStoryStage('generatingAudio');
         toast.info('Đang tạo audio, vui lòng đợi...');
 
-        // Poll for audio status every 10 seconds
         const pollInterval = 10000; // 10 seconds
         const maxAttempts = 600; // Maximum 100 minutes (60 * 10s)
         let attempts = 0;
@@ -234,16 +243,13 @@ const Upload = () => {
                 break;
               }
               
-              // Update progress message
               if (attempts % 3 === 0) {
                 toast.info(`Đang xử lý audio... (${attempts * 10}s)`);
               }
               
-              // Wait before next poll
               await new Promise(resolve => setTimeout(resolve, pollInterval));
             } catch (error) {
               console.error('Error polling audio status:', error);
-              // Continue polling even if there's an error
               await new Promise(resolve => setTimeout(resolve, pollInterval));
             }
           }
@@ -256,7 +262,6 @@ const Upload = () => {
         await pollAudioStatus();
       }
 
-      // Navigate to story page regardless of audio status
       toast.success('Đã tạo truyện thành công!');
       navigate('/story/' + story.id);
       
@@ -352,25 +357,34 @@ const Upload = () => {
                 </div>
               )}
 
-              <ProgressBar
-                progress={ocrProgress}
-                statusLabel={
-                  upload.processingStatus === ProcessingStatus.PROCESSING
-                    ? 'Đang xử lý'
-                    : upload.processingStatus === ProcessingStatus.FAILED
-                      ? 'Lỗi OCR'
-                      : 'Hoàn tất'
-                }
-              />
+              {needsOcr && (
+                <ProgressBar
+                  progress={ocrProgress}
+                  statusLabel={
+                    upload.processingStatus === ProcessingStatus.PROCESSING
+                      ? 'Đang xử lý OCR'
+                      : upload.processingStatus === ProcessingStatus.FAILED
+                        ? 'Lỗi OCR'
+                        : 'Hoàn tất OCR'
+                  }
+                />
+              )}
 
-              {upload.processingStatus === ProcessingStatus.FAILED && (
+              {needsOcr && upload.processingStatus === ProcessingStatus.FAILED && (
                 <p className="text-sm text-destructive">Hệ thống không thể trích xuất văn bản từ ảnh. Vui lòng thử lại.</p>
               )}
 
-              {ocrText && (
+              {ocrText && needsOcr && (
                 <div className="rounded-lg border p-4 bg-muted/30">
-                  <p className="text-sm text-muted-foreground">Trích xuất trước:</p>
+                  <p className="text-sm text-muted-foreground">Văn bản đã trích xuất từ OCR:</p>
                   <p className="mt-2 whitespace-pre-wrap text-sm">{ocrText}</p>
+                </div>
+              )}
+
+              {upload.content && !needsOcr && (
+                <div className="rounded-lg border p-4 bg-muted/30">
+                  <p className="text-sm text-muted-foreground">Nội dung đã tải lên:</p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm">{upload.content.substring(0, 500)}...</p>
                 </div>
               )}
 
